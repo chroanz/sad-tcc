@@ -4,7 +4,7 @@ import EstadoDaTela from '@/componentes/EstadoDaTela.vue'
 import { useCatalogoStore } from '@/stores/catalogo'
 import { useListasStore } from '@/stores/listas'
 import { formatarQuantidade } from '@/utilitarios/formato'
-import type { Marca, Produto } from '@/api/tipos'
+import type { ItemLista, Marca, Produto } from '@/api/tipos'
 
 const props = defineProps<{ id: string }>()
 
@@ -25,6 +25,12 @@ const quantidade = ref(1)
 const unidade = ref<string>('un')
 const marcasDoProduto = ref<Marca[]>([])
 const avisoDeInclusao = ref('')
+
+/** Quando preenchido, o formulário edita este item em vez de incluir um novo. */
+const itemEmEdicao = ref<ItemLista | null>(null)
+
+const renomeando = ref(false)
+const nomeEditado = ref('')
 
 const quantidadeDeItens = computed<number>(() => listas.listaAtual?.itens.length ?? 0)
 const listaCheia = computed<boolean>(() => quantidadeDeItens.value >= MAXIMO_ITENS)
@@ -56,9 +62,42 @@ async function escolherProduto(produto: Produto): Promise<void> {
 
 function cancelarEscolha(): void {
   produtoEscolhido.value = null
+  itemEmEdicao.value = null
   marcaSelecionada.value = null
   quantidade.value = 1
   unidade.value = 'un'
+}
+
+/**
+ * Traz um item já incluído de volta ao formulário. Sem isso, corrigir a quantidade exigia
+ * remover e recriar o item do zero, embora a API de atualização sempre tenha existido.
+ */
+async function editarItem(item: ItemLista): Promise<void> {
+  itemEmEdicao.value = item
+  produtoEscolhido.value = {
+    id: item.produto_id,
+    nome: item.produto_nome ?? `Produto ${item.produto_id}`,
+    categoria: ''
+  }
+  marcaSelecionada.value = item.marca_id
+  quantidade.value = item.quantidade
+  unidade.value = item.unidade
+  avisoDeInclusao.value = ''
+  marcasDoProduto.value = await catalogo.carregarMarcas(item.produto_id)
+}
+
+function iniciarRenomear(): void {
+  nomeEditado.value = listas.listaAtual?.nome ?? ''
+  renomeando.value = true
+}
+
+async function salvarNome(): Promise<void> {
+  const nome = nomeEditado.value.trim()
+  if (nome === '' || nome === listas.listaAtual?.nome) {
+    renomeando.value = false
+    return
+  }
+  if (await listas.renomearLista(listaId.value, nome)) renomeando.value = false
 }
 
 function ajustarQuantidade(passo: number): void {
@@ -66,25 +105,35 @@ function ajustarQuantidade(passo: number): void {
   quantidade.value = proxima < 0.001 ? 0.001 : proxima
 }
 
-const podeAdicionar = computed<boolean>(
-  () => produtoEscolhido.value !== null && quantidade.value > 0 && !listaCheia.value
+const podeSalvar = computed<boolean>(
+  () =>
+    produtoEscolhido.value !== null &&
+    quantidade.value > 0 &&
+    (itemEmEdicao.value !== null || !listaCheia.value)
 )
 
-async function adicionar(): Promise<void> {
+async function salvar(): Promise<void> {
   const produto = produtoEscolhido.value
-  if (!podeAdicionar.value || produto === null) return
+  if (!podeSalvar.value || produto === null) return
 
-  const adicionado = await listas.adicionarItem(listaId.value, {
+  const entrada = {
     produto_id: produto.id,
     marca_id: marcaSelecionada.value,
     quantidade: quantidade.value,
     unidade: unidade.value
-  })
+  }
 
-  if (adicionado) {
+  const emEdicao = itemEmEdicao.value
+  const gravado = emEdicao
+    ? await listas.atualizarItem(listaId.value, emEdicao.id, entrada)
+    : await listas.adicionarItem(listaId.value, entrada)
+
+  if (gravado) {
     // Em tela de celular a lista costuma estar fora do campo de visão; o anúncio confirma
-    // a inclusão sem depender de o usuário rolar até lá.
-    avisoDeInclusao.value = `${produto.nome} adicionado à lista.`
+    // a operação sem depender de o usuário rolar até lá.
+    avisoDeInclusao.value = emEdicao
+      ? `${produto.nome} atualizado.`
+      : `${produto.nome} adicionado à lista.`
     busca.value = ''
     cancelarEscolha()
   }
@@ -113,7 +162,31 @@ async function remover(itemId: number): Promise<void> {
     </RouterLink>
 
     <div class="cabecalho-tela">
-      <h1>{{ listas.listaAtual?.nome ?? 'Lista' }}</h1>
+      <form v-if="renomeando" class="renomear" @submit.prevent="salvarNome">
+        <label class="campo crescer">
+          <span class="oculto-visual">Nome da lista</span>
+          <input v-model="nomeEditado" type="text" maxlength="120" autofocus />
+        </label>
+        <button type="submit" class="botao botao--primario botao--pequeno">Salvar</button>
+        <button
+          type="button"
+          class="botao botao--fantasma botao--pequeno"
+          @click="renomeando = false"
+        >
+          Cancelar
+        </button>
+      </form>
+
+      <div v-else class="linha-entre">
+        <h1 class="crescer">{{ listas.listaAtual?.nome ?? 'Lista' }}</h1>
+        <button
+          type="button"
+          class="botao botao--fantasma botao--pequeno"
+          @click="iniciarRenomear"
+        >
+          Renomear
+        </button>
+      </div>
       <!-- O teto aparece antes de ser violado, em vez de virar um erro 400 no 21º item. -->
       <p>
         <span :class="quaseCheia ? 'selo selo--destaque' : 'selo selo--marca'">
@@ -175,14 +248,16 @@ async function remover(itemId: number): Promise<void> {
       </template>
 
       <!-- Produto escolhido: só o que falta decidir fica na tela. -->
-      <form v-else class="escolhido" @submit.prevent="adicionar">
+      <form v-else class="escolhido" @submit.prevent="salvar">
         <div class="linha-entre">
           <div>
             <strong>{{ produtoEscolhido.nome }}</strong>
-            <p class="mini sem-margem">{{ produtoEscolhido.categoria }}</p>
+            <p class="mini sem-margem">
+              {{ itemEmEdicao ? 'Editando um item da lista' : produtoEscolhido.categoria }}
+            </p>
           </div>
           <button type="button" class="botao botao--fantasma botao--pequeno" @click="cancelarEscolha">
-            Trocar
+            {{ itemEmEdicao ? 'Cancelar' : 'Trocar' }}
           </button>
         </div>
 
@@ -233,9 +308,15 @@ async function remover(itemId: number): Promise<void> {
         <button
           type="submit"
           class="botao botao--primario botao--bloco"
-          :disabled="!podeAdicionar || listas.salvando"
+          :disabled="!podeSalvar || listas.salvando"
         >
-          {{ listas.salvando ? 'Salvando…' : 'Adicionar à lista' }}
+          {{
+            listas.salvando
+              ? 'Salvando…'
+              : itemEmEdicao
+                ? 'Salvar alterações'
+                : 'Adicionar à lista'
+          }}
         </button>
       </form>
     </div>
@@ -265,6 +346,14 @@ async function remover(itemId: number): Promise<void> {
                 {{ item.marca_nome ?? 'qualquer marca' }}
               </p>
             </div>
+            <button
+              type="button"
+              class="botao botao--fantasma botao--pequeno"
+              :aria-label="`Editar ${item.produto_nome ?? 'item'}`"
+              @click="editarItem(item)"
+            >
+              Editar
+            </button>
             <button
               type="button"
               class="botao botao--fantasma botao--pequeno remover"
@@ -374,6 +463,18 @@ async function remover(itemId: number): Promise<void> {
 
 .item {
   padding: var(--esp-3) var(--esp-4);
+}
+
+.renomear {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--esp-2);
+  flex-wrap: wrap;
+}
+
+.renomear .campo {
+  margin-bottom: 0;
+  min-width: 12rem;
 }
 
 .remover {

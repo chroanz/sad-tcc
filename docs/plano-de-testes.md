@@ -31,7 +31,7 @@ responde 200?".
 | Unidade e contrato (API) | `go test ./...` | **executado** — verdes |
 | Estilo e análise (API) | `gofmt -l .`, `go vet ./...` | **executado** — limpos |
 | Tipos e build (PWA) | `npm run build` | **executado** — build e service worker gerados |
-| Sistema ponta a ponta | `bash scripts/testes_de_sistema.sh` | **executado** — 28/28 cenários, 0 falhas |
+| Sistema ponta a ponta | `bash scripts/testes_de_sistema.sh` | **executado** — 35/35 cenários, 0 falhas |
 
 O roteiro de sistema está automatizado em
 [`../scripts/testes_de_sistema.sh`](../scripts/testes_de_sistema.sh): ele autentica,
@@ -263,7 +263,7 @@ Todos fazem parte da Definition of Done em
 
 ## O que falta para fechar a Fase 4
 
-- [x] ~~Rodar o roteiro de testes de sistema com o Docker de pé~~ — 28/28 cenários, 0 falhas.
+- [x] ~~Rodar o roteiro de testes de sistema com o Docker de pé~~ — 35/35 cenários, 0 falhas (S13–S18 e B13 cobrem origem informada, recorte por raio e a regressão do descasamento candidato/mercado).
 - [ ] Substituir a semente fictícia pela coleta real de Juazeiro do Norte.
 - [ ] Repetir a validação exaustiva com dados reais.
 - [ ] Executar os cenários manuais da camada 5.

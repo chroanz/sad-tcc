@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, watch } from 'vue'
+import SeletorDeOrigem from '@/componentes/SeletorDeOrigem.vue'
 import SeletorDePerfil from '@/componentes/SeletorDePerfil.vue'
 import { useListasStore } from '@/stores/listas'
+import { useOrigemStore } from '@/stores/origem'
 import { PERFIS, useRecomendacaoStore } from '@/stores/recomendacao'
 import { compararPerfis, type ComparacaoDePerfis } from '@/utilitarios/comparacao'
 import {
@@ -19,6 +21,7 @@ const props = defineProps<{ id: string }>()
 
 const listas = useListasStore()
 const recomendacao = useRecomendacaoStore()
+const origem = useOrigemStore()
 
 const listaId = computed<number>(() => Number(props.id))
 
@@ -95,7 +98,9 @@ const comprasPorMercado = computed<Map<number, CompraNoMercado>>(
  */
 onMounted(async () => {
   recomendacao.focarLista(listaId.value)
-  await listas.carregarLista(listaId.value)
+  // A origem precisa estar decidida antes de resolver: gerar durante a restauração
+  // produziria um roteiro sem origem nem raio sob uma tela que anuncia os dois.
+  await Promise.all([listas.carregarLista(listaId.value), origem.restaurar()])
   if (!listaVazia.value && !recomendacao.temResultados) {
     await recomendacao.gerarTodosOsPerfis(listaId.value)
   }
@@ -103,12 +108,21 @@ onMounted(async () => {
 
 watch(listaId, async (novoId) => {
   recomendacao.focarLista(novoId)
-  await listas.carregarLista(novoId)
+  await Promise.all([listas.carregarLista(novoId), origem.restaurar()])
   if (!listaVazia.value) await recomendacao.gerarTodosOsPerfis(novoId)
 })
 
 async function recalcular(): Promise<void> {
   await recomendacao.gerarTodosOsPerfis(listaId.value)
+}
+
+/**
+ * Mudar de onde se parte ou até onde se busca resolve outra instância do problema, então o
+ * roteiro anterior deixa de valer na hora — exibi-lo seria pior do que não exibir nada.
+ */
+async function aoAlterarOrigem(): Promise<void> {
+  recomendacao.invalidarResultados()
+  if (!listaVazia.value) await recomendacao.gerarTodosOsPerfis(listaId.value)
 }
 </script>
 
@@ -137,6 +151,10 @@ async function recalcular(): Promise<void> {
     <p v-if="listaVazia" class="aviso aviso--atencao">
       Esta lista está vazia. Adicione itens antes de gerar a recomendação.
     </p>
+
+    <div class="cartao">
+      <SeletorDeOrigem @alterada="aoAlterarOrigem" />
+    </div>
 
     <div v-if="recomendacao.gerando" role="status" aria-live="polite">
       <span class="oculto-visual">Comparando os três perfis de compra</span>
@@ -335,6 +353,19 @@ async function recalcular(): Promise<void> {
                   ? 'Centro de Juazeiro do Norte (aproximado)'
                   : 'Origem informada'
               }}
+            </dd>
+          </div>
+          <div>
+            <dt>Recorte de busca</dt>
+            <dd>
+              {{
+                resultado.raio_km
+                  ? `${resultado.raio_km} km em linha reta`
+                  : 'sem recorte'
+              }}
+              <template v-if="resultado.mercados_considerados">
+                · {{ resultado.mercados_considerados }} mercado(s)
+              </template>
             </dd>
           </div>
         </dl>

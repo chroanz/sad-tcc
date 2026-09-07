@@ -129,6 +129,24 @@ Os parâmetros vêm da própria resposta (`custo_por_visita_centavos` e
 auditável em vez de misterioso. Recomendações gravadas antes dessa mudança chegam sem os
 campos, e aí a linha simplesmente não aparece.
 
+### O ponto de partida é escolhido, não presumido
+
+`SeletorDeOrigem` abre a tela de resultado com três caminhos: usar a localização do
+aparelho, escolher um mercado como referência, ou continuar no centro de Juazeiro do Norte.
+O selo ao lado diz qual está valendo — "exata" ou "aproximada" —, então a origem nunca é
+uma suposição silenciosa.
+
+O raio de busca vive no mesmo controle e **só fica ativo quando há origem real**: um recorte
+medido a partir da referência do servidor seria "5 km do centro" apresentado como "5 km de
+mim". Antes de gerar, a tela informa quantos mercados caem no raio, para que o usuário não
+descubra um recorte apertado só depois, na forma de itens sem oferta.
+
+### Itens e listas podem ser corrigidos
+
+Cada item tem "Editar", que o traz de volta ao formulário com marca, quantidade e unidade;
+o título da lista tem "Renomear". Ambos usam operações que a API sempre teve e que nenhuma
+tela chamava — corrigir a quantidade do arroz exigia remover e recriar o item.
+
 ### O ponto de equilíbrio explica a escolha
 
 O sistema não sabe quanto vale um quilômetro para quem vai comprar: R$ 1,20/km é um

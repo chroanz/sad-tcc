@@ -5,7 +5,11 @@ definir o raio de busca** e **em que unidade apresentar o custo logístico**. As
 na mesma coisa — a parcela `custo_logistico(y)` da função objetivo (seção 5 do
 `CLAUDE.md`) — e por isso são tratadas juntas.
 
-## Situação atual
+> **Estado deste documento.** A análise abaixo descreve o sistema **antes** das mudanças.
+> Os sete itens recomendados já foram implementados; o registro do que ficou como está na
+> seção [Recomendação consolidada](#recomendação-consolidada), ao final.
+
+## Situação encontrada na análise
 
 ```mermaid
 flowchart LR
@@ -255,13 +259,13 @@ continua indo para o histórico.
 |---|---|---|---|---|
 | 1 | Ponto de equilíbrio na tela de resultado | PWA | baixo | **feito** |
 | 2 | Mover o valor em reais para os detalhes, com os parâmetros | PWA + Go + Python | baixo | **feito** |
-| 3 | Ligar a origem: *priming*, `getCurrentPosition`, os três erros | PWA | médio | pendente |
-| 4 | Origem manual como alternativa à negação | PWA | médio | pendente |
-| 5 | `ListarMercadosProximos` e chips de raio | Go + PWA | médio | pendente |
-| 6 | Gravar o raio em `recomendacoes` | Go + banco | baixo | pendente |
-| 7 | Registrar a armadilha do contexto seguro | docs | baixo | pendente |
+| 3 | Ligar a origem: *priming*, `getCurrentPosition`, os três erros | PWA | médio | **feito** |
+| 4 | Origem manual como alternativa à negação | PWA | médio | **feito** |
+| 5 | `ListarMercadosProximos` e chips de raio | Go + PWA | médio | **feito** |
+| 6 | Gravar o raio em `recomendacoes` | Go + banco | baixo | **feito** |
+| 7 | Registrar a armadilha do contexto seguro | docs | baixo | **feito** |
 
-O 5 só faz sentido depois do 3: raio sem origem real é raio a partir do centro.
+Os sete itens estão implementados. O que segue registra como cada um ficou.
 
 ### O que os itens 1 e 2 entregaram
 
@@ -280,8 +284,66 @@ a tabela de sobrepreço da seção anterior foi produzida, e ela agora consta da
 anterior de que a diferença seria pequena o bastante para não inverter decisões.
 
 Verificado na pilha real: parâmetros ecoados nos três perfis, limiar de R$ 0,58/km conferido
-fora do código, 45 testes do otimizador, portões de Go e do PWA limpos e 28 cenários de
-sistema sem falha.
+fora do código, 45 testes do otimizador e portões de Go e do PWA limpos.
+
+### O que os itens 3 a 7 entregaram
+
+**Onde cada peça ficou:**
+
+| Peça | Arquivo |
+|---|---|
+| Acesso ao navegador, contexto seguro e os três erros | `pwa/src/utilitarios/localizacao.ts` |
+| Escolha de origem e raio, com preferência persistida | `pwa/src/stores/origem.ts` |
+| *Priming*, alternativa manual e chips de raio | `pwa/src/componentes/SeletorDeOrigem.vue` |
+| Recorte por distância em SQL | `Repositorio.ListarMercadosProximos` |
+| Validação do recorte e teto da PoC | `Recomendacao.selecionarMercados` |
+| Coluna de procedência | `api/migracoes/003_raio_da_recomendacao.sql` |
+
+**As três garantias de privacidade foram cumpridas como declarado.** A coordenada serve
+apenas ao cálculo daquela requisição; o `localStorage` guarda só o *modo* escolhido e o
+raio, nunca a posição; e voltar a "usar o centro" é um toque. A posição é rebuscada no
+início da sessão apenas quando a permissão já está concedida — estado em que o navegador
+não exibe aviso algum, então não há pedido às escondidas.
+
+**O raio depende da origem por construção.** `raioParaEnvio` devolve `undefined` enquanto a
+origem for a padrão, e os chips ficam desabilitados com a explicação. Não é possível, pela
+interface, obter um recorte medido de um ponto que não é o do usuário.
+
+**Verificação:** 7 cenários novos no `scripts/testes_de_sistema.sh` (S13–S18 e B13), que
+passou a somar **35 cenários com 0 falhas**. Cobrem origem informada saindo de aproximada,
+o raio ecoado na resposta, a contagem de mercados no recorte, e os dois caminhos de erro —
+raio que não alcança mercado nenhum e raio negativo — que respondem 400 com mensagem, nunca
+500.
+
+### Dois defeitos que só o uso real revelou
+
+A primeira versão do recorte tinha dois problemas, ambos corrigidos.
+
+**O otimizador recusava o payload com 422.** O filtro por raio reduzia a lista de
+`mercados`, mas `montarItens` continuava montando candidatos a partir de **todas** as
+ofertas vigentes. O resultado era um payload internamente inconsistente — um candidato do
+item apontando para um mercado ausente da lista — e o serviço Python o rejeitava inteiro,
+com razão: seria uma alocação que o modelo não sabe custear.
+
+O invariante "todo candidato referencia um mercado conhecido" era garantido por acidente
+enquanto o conjunto de mercados era sempre o cadastro inteiro. Ao introduzir um
+subconjunto, ele passou a precisar ser garantido de propósito: `montarItens` agora recebe
+os mercados selecionados e descarta oferta de fora do recorte.
+
+**O raio escolhido não valia na primeira geração.** `restaurar()` é assíncrona e pode
+demorar segundos — obter a posição do GPS é lento —, mas `main.ts` a disparava sem esperar,
+e o `onMounted` da tela de resultado gerava assim que a lista carregava. Numa carga direta
+da tela, a recomendação saía **antes de a origem existir**: sem coordenada e sem raio. A
+restauração terminava depois e atualizava o cabeçalho, deixando a tela anunciar "sua
+localização · 7 km" sobre um resultado que não usou nenhum dos dois.
+
+A correção memoriza a restauração — chamadas concorrentes compartilham a mesma promessa — e
+a tela passa a aguardá-la junto com o carregamento da lista antes de resolver.
+
+Os cenários S17 e S18 guardam a primeira regressão: um raio de 3 km, que exclui mercados,
+precisa devolver `OTIMO` e considerar menos mercados que um raio amplo. A segunda foi
+confirmada à mão contra a pilha real — com raio de 2 km a partir de uma posição de GPS, os
+dois únicos mercados dentro do círculo são exatamente os dois que aparecem no roteiro.
 
 ## Para o texto do TCC
 

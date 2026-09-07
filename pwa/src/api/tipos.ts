@@ -112,6 +112,8 @@ export interface PedidoRecomendacao {
   perfil: PerfilConveniencia
   origem?: Origem
   peso_conveniencia?: number
+  /** Recorte dos mercados candidatos, em km a partir da origem. Ausente: sem recorte. */
+  raio_km?: number
 }
 
 export interface ParadaRota {
@@ -165,6 +167,8 @@ export interface Recomendacao {
   perfil: PerfilConveniencia
   peso_conveniencia: number
   origem_aproximada: boolean
+  raio_km?: number | null
+  mercados_considerados?: number
   status: string
   custo_itens_centavos: number
   custo_logistico_centavos: number

@@ -52,6 +52,9 @@ type PedidoRecomendacao struct {
 	Perfil           string      `json:"perfil"`
 	PesoConveniencia *float64    `json:"peso_conveniencia"`
 	Origem           *Coordenada `json:"origem"`
+	// RaioKm recorta os mercados candidatos por distância em linha reta a partir
+	// da origem. Ausente significa sem recorte: todos os cadastrados entram.
+	RaioKm *float64 `json:"raio_km"`
 }
 
 // Coordenada é o ponto de partida e retorno do usuário.
@@ -96,6 +99,8 @@ type RecomendacaoGerada struct {
 	Perfil                      string                  `json:"perfil"`
 	PesoConveniencia            float64                 `json:"peso_conveniencia"`
 	OrigemAproximada            bool                    `json:"origem_aproximada"`
+	RaioKm                      *float64                `json:"raio_km"`
+	MercadosConsiderados        int                     `json:"mercados_considerados"`
 	Status                      string                  `json:"status"`
 	CustoItensCentavos          int64                   `json:"custo_itens_centavos"`
 	CustoLogisticoCentavos      int64                   `json:"custo_logistico_centavos"`
@@ -134,23 +139,19 @@ func (r *Recomendacao) Gerar(
 			len(lista.Itens), MaximoItensPorLista)
 	}
 
-	mercados, err := r.repositorio.ListarMercados(ctx)
+	origem, aproximada := r.resolverOrigem(pedido.Origem)
+
+	mercados, err := r.selecionarMercados(ctx, origem, pedido.RaioKm)
 	if err != nil {
 		return RecomendacaoGerada{}, err
 	}
-	if len(mercados) > MaximoMercados {
-		return RecomendacaoGerada{}, dominio.NovoErroValidacao(
-			"há %d mercados cadastrados; o teto da PoC é %d", len(mercados), MaximoMercados)
-	}
-
-	origem, aproximada := r.resolverOrigem(pedido.Origem)
 
 	requisicao := otimizador.Requisicao{
 		Origem:           origem,
 		PesoConveniencia: peso,
 		Mercados:         converterMercados(mercados),
 	}
-	if requisicao.Itens, err = r.montarItens(ctx, lista.Itens); err != nil {
+	if requisicao.Itens, err = r.montarItens(ctx, lista.Itens, mercados); err != nil {
 		return RecomendacaoGerada{}, err
 	}
 
@@ -160,7 +161,7 @@ func (r *Recomendacao) Gerar(
 	}
 
 	registro, err := r.repositorio.SalvarRecomendacao(
-		ctx, listaID, resposta.CustoTotalCentavos, peso, resposta.Bruto)
+		ctx, listaID, resposta.CustoTotalCentavos, peso, pedido.RaioKm, resposta.Bruto)
 	if err != nil {
 		return RecomendacaoGerada{}, err
 	}
@@ -172,6 +173,8 @@ func (r *Recomendacao) Gerar(
 	gerada.Perfil = perfil
 	gerada.PesoConveniencia = peso
 	gerada.OrigemAproximada = aproximada
+	gerada.RaioKm = pedido.RaioKm
+	gerada.MercadosConsiderados = len(mercados)
 	return gerada, nil
 }
 
@@ -196,6 +199,44 @@ func resolverPeso(pedido PedidoRecomendacao) (float64, string, error) {
 		return 0, "", err
 	}
 	return peso, pedido.Perfil, nil
+}
+
+// selecionarMercados aplica o recorte por raio e valida o teto da PoC.
+//
+// O raio parte da origem efetivamente usada — se o filtro rodasse a partir da
+// referência padrão enquanto o usuário informou a própria posição, "5 km de mim"
+// viraria silenciosamente "5 km do centro".
+func (r *Recomendacao) selecionarMercados(
+	ctx context.Context, origem otimizador.Coordenada, raioKm *float64,
+) ([]dominio.Mercado, error) {
+	var (
+		mercados []dominio.Mercado
+		err      error
+	)
+
+	if raioKm == nil {
+		mercados, err = r.repositorio.ListarMercados(ctx)
+	} else {
+		if *raioKm <= 0 {
+			return nil, dominio.NovoErroValidacao("raio_km deve ser maior que zero")
+		}
+		mercados, err = r.repositorio.ListarMercadosProximos(
+			ctx, origem.Latitude, origem.Longitude, *raioKm)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if len(mercados) == 0 {
+		return nil, dominio.NovoErroValidacao(
+			"nenhum mercado no raio informado; aumente o raio para gerar a recomendação")
+	}
+	if len(mercados) > MaximoMercados {
+		return nil, dominio.NovoErroValidacao(
+			"o recorte alcançou %d mercados; o teto da PoC é %d. Reduza o raio",
+			len(mercados), MaximoMercados)
+	}
+	return mercados, nil
 }
 
 // resolverOrigem usa a coordenada enviada pelo cliente ou, na ausência dela, a
@@ -232,10 +273,20 @@ func converterMercados(mercados []dominio.Mercado) []otimizador.MercadoRequisica
 // são enviados assim mesmo: descartá-los é responsabilidade do otimizador, que
 // precisa distinguir "sem preço" de "sem estoque" no motivo de não atendimento.
 func (r *Recomendacao) montarItens(
-	ctx context.Context, itens []dominio.ItemLista,
+	ctx context.Context, itens []dominio.ItemLista, mercados []dominio.Mercado,
 ) ([]otimizador.ItemRequisicao, error) {
 	if len(itens) == 0 {
 		return []otimizador.ItemRequisicao{}, nil
+	}
+
+	// O otimizador recusa o payload inteiro quando um candidato aponta para um
+	// mercado fora da lista de mercados — e com razão: seria uma alocação que o
+	// modelo não sabe custear. O recorte por raio tornou esse descasamento
+	// possível, porque os mercados passaram a ser um subconjunto do cadastro
+	// enquanto as ofertas continuam vindo de todos eles.
+	selecionados := make(map[int64]bool, len(mercados))
+	for _, mercado := range mercados {
+		selecionados[mercado.ID] = true
 	}
 
 	produtoIDs := make([]int64, 0, len(itens))
@@ -263,6 +314,9 @@ func (r *Recomendacao) montarItens(
 		melhorPorMercado := make(map[int64]otimizador.CandidatoRequisicao)
 
 		for _, oferta := range ofertasPorProduto[item.ProdutoID] {
+			if !selecionados[oferta.MercadoID] {
+				continue
+			}
 			if item.MarcaID != nil && oferta.MarcaID != *item.MarcaID {
 				continue
 			}
@@ -442,5 +496,6 @@ func (r *Recomendacao) Buscar(
 	gerada.GeradoEm = registro.GeradoEm
 	gerada.PesoConveniencia = registro.PesoConveniencia
 	gerada.Perfil = dominio.PerfilDoPeso(registro.PesoConveniencia)
+	gerada.RaioKm = registro.RaioKm
 	return gerada, nil
 }

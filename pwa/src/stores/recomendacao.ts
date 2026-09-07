@@ -6,6 +6,7 @@ import {
   obterRecomendacao as obterRecomendacaoApi
 } from '@/api/recomendacoes'
 import { mensagemAmigavel } from '@/api/clienteHttp'
+import { useOrigemStore } from '@/stores/origem'
 import type { PerfilConveniencia, Recomendacao, RecomendacaoResumo } from '@/api/tipos'
 
 /** Ordem de apresentação: do mais barato ao mais cômodo. */
@@ -100,8 +101,17 @@ export const useRecomendacaoStore = defineStore(
       gerando.value = true
       erro.value = null
 
+      // Origem e raio andam juntos: filtrar por distância a partir de um ponto que não é
+      // o do usuário transformaria "5 km de mim" em "5 km do centro".
+      const origem = useOrigemStore()
       const execucoes = await Promise.allSettled(
-        PERFIS.map((perfil) => gerarRecomendacaoApi(listaId, { perfil }))
+        PERFIS.map((perfil) =>
+          gerarRecomendacaoApi(listaId, {
+            perfil,
+            origem: origem.coordenadaParaEnvio,
+            raio_km: origem.raioParaEnvio
+          })
+        )
       )
 
       const obtidos = semResultados()

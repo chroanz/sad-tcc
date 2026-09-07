@@ -32,7 +32,7 @@ A coluna *Situação* registra a reinspeção feita após a primeira rodada de c
 | A03 | H6 Reconhecimento | Busca e seleção de produto são dois controles desconexos | 3 | corrigido |
 | A04 | H4 Consistência | "Gerar recomendação" tem dois significados diferentes | 3 | corrigido |
 | A05 | H6 Reconhecimento | O trade-off entre perfis não é comparável na tela | 3 | corrigido |
-| A06 | H3 Controle e liberdade | Não há como editar um item nem renomear uma lista | 3 | aberto |
+| A06 | H3 Controle e liberdade | Não há como editar um item nem renomear uma lista | 3 | corrigido |
 | A07 | H5 Prevenção de erros | O teto de 20 itens só se revela no erro 400 | 3 | corrigido |
 | A08 | H5 Prevenção de erros | Unidade não é validada contra o produto | 2 | aberto |
 | A09 | H1 Visibilidade do status | "Leva alguns segundos" — a resposta leva 40 ms | 2 | corrigido |
@@ -47,20 +47,21 @@ A coluna *Situação* registra a reinspeção feita após a primeira rodada de c
 | A18 | H2 Correspondência | Latitude/longitude com 6 casas para o usuário final | 1 | corrigido |
 | A19 | H8 Estética | Filtro dentro do `v-for` do template recalcula a cada render | 1 | corrigido |
 
-**Resultado das três rodadas:** 13 corrigidos e 2 parciais de 19. Saíram os dois
-catastróficos e quatro dos cinco graves. Restam 4 abertos — três de severidade 2 e o A06,
-o único grave que sobra.
+**Resultado das quatro rodadas:** 14 corrigidos e 2 parciais de 19. **Saíram os dois
+catastróficos e todos os cinco graves.** Restam 3 abertos, nenhum acima de severidade 2.
 
 ```mermaid
 flowchart LR
     A["19 achados<br/>inspeção inicial"] --> B["1ª rodada<br/>estado, custo, trade-off"]
     B --> C["2ª rodada<br/>sistema visual"]
     C --> E["3ª rodada<br/>ponto de equilíbrio"]
-    E --> D["4 abertos<br/>A06 grave, 3 leves"]
+    E --> F["4ª rodada<br/>origem, raio e A06"]
+    F --> D["3 abertos<br/>severidade 2"]
 
-    B -.->|"8 corrigidos"| X["13 corrigidos<br/>2 parciais"]
+    B -.->|"8 corrigidos"| X["14 corrigidos<br/>2 parciais"]
     C -.->|"5 corrigidos"| X
     E -.->|"A15 parcial"| X
+    F -.->|"A06 corrigido"| X
 
     style X fill:#e8f6ef,stroke:#0b7a4f
     style D fill:#fff4e5,stroke:#8a5a06
@@ -560,15 +561,64 @@ a tela nunca mostra.
 | Limiar calculado sobre dados reais | R$ 0,58/km, conferido fora do código |
 | `scripts/testes_de_sistema.sh` | 28 cenários, 0 falhas |
 
+## Quarta rodada — origem, raio e o último grave
+
+### A06 · O que já existia passou a ter porta
+
+`atualizarItem` e `renomearLista` estavam na API, no cliente e na store, sem nenhuma tela
+que os chamasse. Agora cada item da lista tem "Editar", que o traz de volta ao mesmo
+formulário — produto fixo, marca, quantidade e unidade editáveis — e o botão vira "Salvar
+alterações". O título da lista ganhou "Renomear" ao lado. Corrigir a quantidade do arroz
+deixou de exigir remover e recriar o item.
+
+### Origem real, com o aviso do navegador tratado como recurso escasso
+
+A permissão de geolocalização, uma vez negada, não pode ser pedida de novo pela aplicação.
+Por isso `getCurrentPosition` nunca é chamada na montagem da tela: o componente explica o
+ganho, e só um toque em "Usar minha localização" dispara o aviso. Negou, aparece a
+alternativa — partir de um mercado conhecido —, e nunca um beco sem saída. Os três códigos
+de erro (negado, indisponível, tempo esgotado) têm mensagens distintas, porque pedem ações
+diferentes.
+
+Antes desta rodada **100% das recomendações partiam do centro de Juazeiro**, com o campo
+`origem` do contrato aceito pela API e nunca preenchido pelo PWA.
+
+### Raio, e por que ele depende da origem
+
+O recorte por distância desceu para o SQL, em `ListarMercadosProximos`, com a mesma
+haversine do otimizador. Com o filtro no lugar certo, o teto de 8 mercados virou
+consequência do raio escolhido em vez de uma parede que derrubava a requisição quando o
+cadastro crescesse.
+
+O raio **só é enviado quando existe origem real**: medi-lo a partir da referência do
+servidor transformaria "5 km de mim" em "5 km do centro" — a mesma discrepância silenciosa
+entre o que a tela diz e o que o sistema faz que motivou o achado A01. Com origem
+aproximada, os chips ficam desabilitados e a tela explica por quê.
+
+Antes de gerar, o seletor mostra quantos mercados caem no raio, calculando a haversine no
+cliente. É prevenção (H5): sem isso o usuário descobriria o recorte apertado só depois,
+lendo "nenhum mercado tem esse item" quando a verdade seria "nenhum dentro do seu raio".
+
+### Verificação
+
+| Verificação | Resultado |
+|---|---|
+| `gofmt -l` · `go vet` · `go test ./...` | limpos |
+| `vue-tsc --noEmit && vite build` | limpo |
+| `scripts/testes_de_sistema.sh` | **35 cenários, 0 falhas** (7 novos: S13–S18 e B13) |
+| Origem informada | `origem_aproximada: false` |
+| Raio sem nenhum mercado · raio negativo | 400 com mensagem, nunca 500 |
+
 ## Backlog restante
+
+Nenhum acima de severidade 2.
 
 | Ordem | Achados | O que fazer | Sev. | Esforço |
 |---|---|---|---|---|
-| 1 | A06 | Expor `atualizarItem` e `renomearLista`, que já existem | 3 | baixo |
-| 2 | A08 | Unidade vinda do catálogo, não livre por produto | 2 | baixo |
-| 3 | A15 | Data da coleta na tela de resultado | 2 | baixo |
-| 4 | A12 | Ação por item não atendido | 2 | baixo |
-| 5 | A11, A16 | Desfazer no lugar de confirmar; duplicar lista | 2 | baixo |
+| 1 | A08 | Unidade vinda do catálogo, não livre por produto | 2 | baixo |
+| 2 | A15 | Data da coleta na tela de resultado | 2 | baixo |
+| 3 | A12 | Ação por item não atendido | 2 | baixo |
+| 4 | A11, A16 | Desfazer no lugar de confirmar; duplicar lista | 2 | baixo |
 
 ## Para o texto do TCC
 

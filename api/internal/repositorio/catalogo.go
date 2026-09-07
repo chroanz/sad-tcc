@@ -114,7 +114,15 @@ func (r *Repositorio) ListarMercados(ctx context.Context) ([]dominio.Mercado, er
 		  FROM mercados
 		 ORDER BY nome`
 
-	linhas, err := r.pool.Query(ctx, consulta)
+	return r.lerMercados(ctx, consulta)
+}
+
+// lerMercados executa uma consulta que devolve as colunas de mercado na ordem
+// esperada e materializa o resultado.
+func (r *Repositorio) lerMercados(
+	ctx context.Context, consulta string, argumentos ...any,
+) ([]dominio.Mercado, error) {
+	linhas, err := r.pool.Query(ctx, consulta, argumentos...)
 	if err != nil {
 		return nil, fmt.Errorf("listar mercados: %w", err)
 	}
@@ -132,6 +140,32 @@ func (r *Repositorio) ListarMercados(ctx context.Context) ([]dominio.Mercado, er
 		mercados = append(mercados, mercado)
 	}
 	return mercados, linhas.Err()
+}
+
+// ListarMercadosProximos devolve os mercados dentro de um raio em quilômetros a
+// partir da origem, medido em linha reta.
+//
+// O recorte acontece aqui, e não em Go depois de carregar tudo, porque é o banco
+// que sabe quantos mercados existem: com o filtro no lugar certo o teto da PoC
+// passa a ser consequência do raio escolhido, e não uma parede que derruba a
+// requisição quando o cadastro cresce.
+//
+// A fórmula é a mesma haversine do otimizador, escrita em SQL — os dois lados
+// precisam concordar sobre o que está dentro do raio.
+func (r *Repositorio) ListarMercadosProximos(
+	ctx context.Context, latitude, longitude, raioKm float64,
+) ([]dominio.Mercado, error) {
+	const consulta = `
+		SELECT id, nome, latitude::float8, longitude::float8, endereco, criado_em
+		  FROM mercados
+		 WHERE 2 * 6371.0088 * asin(sqrt(
+		           power(sin(radians(latitude::float8 - $1) / 2), 2)
+		         + cos(radians($1)) * cos(radians(latitude::float8))
+		         * power(sin(radians(longitude::float8 - $2) / 2), 2)
+		       )) <= $3
+		 ORDER BY nome`
+
+	return r.lerMercados(ctx, consulta, latitude, longitude, raioKm)
 }
 
 // CriarMercado insere um supermercado.

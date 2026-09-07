@@ -104,17 +104,49 @@ Dois detalhes que costumam morder nesse arranjo:
 
 - **`error getting credentials … docker-credential-desktop.exe: exec format error`** — o
   `~/.docker/config.json` da distro herdou `"credsStore": "desktop.exe"`, que é um binário
-  Windows e não executa no Linux. Remova essa chave do arquivo, ou contorne por comando:
+  Windows e não executa no Linux. Qualquer `pull` falha, inclusive o das imagens base.
+
+  A correção definitiva é **remover essa chave**. Vale conferir antes se o arquivo guarda
+  credenciais de registro — se `auths` estiver vazio, como costuma estar num Docker
+  instalado dentro do WSL, não há nada a perder:
+
+  ```bash
+  cat ~/.docker/config.json          # confira se existe "auths" com algo dentro
+  cp ~/.docker/config.json ~/.docker/config.json.bak
+  echo '{}' > ~/.docker/config.json  # se "auths" estava vazio
+  ```
+
+  Para contornar sem tocar no arquivo, num comando só:
 
   ```bash
   mkdir -p /tmp/cfgdocker && echo '{}' > /tmp/cfgdocker/config.json
   DOCKER_CONFIG=/tmp/cfgdocker docker compose up -d --build
   ```
 
+  O contorno é por sessão: `/tmp` é limpo quando a VM do WSL reinicia.
+
 - **Containers param sozinhos entre um comando e outro** — a VM do WSL desliga quando não
   há nenhuma sessão aberta, e leva os containers junto (eles saem com código 0). Mantenha
   um terminal WSL aberto durante o uso, ou acrescente `restart: unless-stopped` aos
   serviços do `docker-compose.yml`.
+
+## Testar a localização no celular exige HTTPS
+
+O `vite.config.ts` usa `host: true`, então o PWA fica acessível pelo IP da máquina — e é
+assim que dá para abri-lo no celular. **Mas a geolocalização não funciona desse jeito**: a
+API do navegador só existe em contexto seguro, ou seja `https://` ou `localhost`. Em
+`http://192.168.x.x:5173` o botão "Usar minha localização" avisa que o recurso está
+indisponível, e o cálculo continua partindo do centro de Juazeiro do Norte.
+
+| Cenário | Geolocalização |
+|---|---|
+| `http://localhost:5173` no computador | funciona |
+| `http://192.168.x.x:5173` no celular | **não funciona** |
+| `https://…` por túnel ou certificado local | funciona |
+
+Para demonstrar a origem real no aparelho, sirva por HTTPS — um túnel para a porta 5173
+resolve. Sem isso, a alternativa manual ("Escolher um ponto") continua disponível e é o
+caminho a usar na apresentação.
 
 ## Verificação rápida
 

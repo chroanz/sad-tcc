@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Testes de sistema ponta a ponta contra a pilha em execucao.
 #
-# Executa os cenarios descritos em docs/plano-de-testes.md (S01-S12 e B01-B12)
+# Executa os cenarios descritos em docs/plano-de-testes.md (S01-S18 e B01-B13)
 # contra a API real, com banco e otimizador de pe. Sai com codigo 1 se algum
 # cenario falhar, para servir de portao de qualidade.
 #
@@ -269,6 +269,55 @@ for pid in $ids_produtos; do
 done
 checar "B06" "lista com $contador itens excede o teto e devolve 400" "400" \
   "$(status_de POST "$API/listas/$TETO_ID/recomendacoes" '{"perfil":"equilibrado"}' "$TOKEN")"
+
+# ------------------------------------------------- origem e raio de busca (S13-S16)
+echo
+echo "-- Origem informada e recorte por raio --"
+
+# Centro de Juazeiro do Norte, o mesmo padrao do servidor.
+ORIGEM='{"latitude":-7.213100,"longitude":-39.315300}'
+
+com_origem=$(curl -s -X POST "$API/listas/$LISTA_ID/recomendacoes" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"perfil\":\"equilibrado\",\"origem\":$ORIGEM}")
+
+checar "S13" "origem informada deixa de ser aproximada" "false" \
+  "$(echo "$com_origem" | extrair origem_aproximada)"
+
+com_raio=$(curl -s -X POST "$API/listas/$LISTA_ID/recomendacoes" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"perfil\":\"equilibrado\",\"origem\":$ORIGEM,\"raio_km\":50}")
+
+checar "S14" "raio amplo devolve o recorte usado" "50" \
+  "$(echo "$com_raio" | extrair raio_km)"
+
+mercados_amplo=$(echo "$com_raio" | extrair mercados_considerados)
+checar_verdadeiro "S15" "raio amplo considera ao menos 2 mercados ($mercados_amplo)" \
+  "$([ "${mercados_amplo:-0}" -ge 2 ] && echo 1 || echo 0)"
+
+# Raio minusculo nao alcanca mercado nenhum: precisa de erro claro, nao de 500.
+checar "S16" "raio sem nenhum mercado devolve 400" "400" \
+  "$(status_de POST "$API/listas/$LISTA_ID/recomendacoes" \
+     "{\"perfil\":\"equilibrado\",\"origem\":$ORIGEM,\"raio_km\":0.01}" "$TOKEN")"
+
+# Regressao: com o recorte ativo, os candidatos precisam ser restritos aos mercados
+# selecionados. Sem isso o otimizador recusa o payload inteiro com 422, porque uma oferta
+# aponta para um mercado que nao consta da lista.
+raio_estreito=$(curl -s -X POST "$API/listas/$LISTA_ID/recomendacoes" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"perfil\":\"equilibrado\",\"origem\":$ORIGEM,\"raio_km\":3}")
+
+checar "S17" "raio que exclui mercados ainda resolve" "OTIMO" \
+  "$(echo "$raio_estreito" | extrair status)"
+
+mercados_estreito=$(echo "$raio_estreito" | extrair mercados_considerados)
+checar_verdadeiro "S18" \
+  "raio estreito considera menos mercados que o amplo ($mercados_estreito < $mercados_amplo)" \
+  "$([ "${mercados_estreito:-0}" -lt "${mercados_amplo:-0}" ] && echo 1 || echo 0)"
+
+checar "B13" "raio negativo devolve 400" "400" \
+  "$(status_de POST "$API/listas/$LISTA_ID/recomendacoes" \
+     "{\"perfil\":\"equilibrado\",\"origem\":$ORIGEM,\"raio_km\":-1}" "$TOKEN")"
 
 # limpeza das listas criadas pelo teste
 curl -s -o /dev/null -X DELETE "$API/listas/$VAZIA_ID" -H "Authorization: Bearer $TOKEN"

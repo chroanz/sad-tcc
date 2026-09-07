@@ -61,6 +61,7 @@ subida da API idempotente — reiniciar o container não recria nem duplica nada
 |---|---|
 | `001_esquema_inicial.sql` | tabelas, CHECKs, índices, comentários e a view `precos_vigentes` |
 | `002_dados_semente.sql` | dados **fictícios** de Juazeiro do Norte para a PoC rodar ponta a ponta |
+| `003_raio_da_recomendacao.sql` | `recomendacoes.parametro_raio_km`, para o histórico saber qual recorte de mercados produziu cada resultado |
 
 ## Como adicionar uma migration
 

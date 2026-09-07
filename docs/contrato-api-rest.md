@@ -162,6 +162,7 @@ otimizador — o que costuma gerar mais economia. Quando informado, restringe os
 | `perfil` | sim (salvo se `peso_conveniencia` for enviado) | `economico`, `equilibrado` ou `conveniente` |
 | `peso_conveniencia` | não | peso numérico livre ≥ 0; **sobrepõe** o perfil. Existe para os experimentos da Fase 4 |
 | `origem` | não | padrão: `ORIGEM_PADRAO_*` do servidor. Quando omitida, a resposta traz `origem_aproximada: true` |
+| `raio_km` | não | recorta os mercados candidatos por distância **em linha reta a partir de `origem`**. Omitido: todos os cadastrados entram. Deve ser > 0 |
 
 Limite da PoC: listas com mais de **20 itens** ou cenários com mais de **8 mercados** são
 rejeitados com `400 VALIDACAO` e mensagem descritiva. A instância nunca é processada
@@ -185,6 +186,8 @@ Perfis e seus pesos:
   "perfil": "equilibrado",
   "peso_conveniencia": 1.0,
   "origem_aproximada": false,
+  "raio_km": 7,
+  "mercados_considerados": 6,
   "status": "OTIMO",
   "custo_itens_centavos": 11000,
   "custo_logistico_centavos": 1345,

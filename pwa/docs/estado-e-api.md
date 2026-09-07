@@ -8,6 +8,18 @@
 | `catalogo` | produtos, mercados e marcas por produto | não, memória da aba |
 | `listas` | listas do usuário e a lista aberta, com os itens | não |
 | `recomendacao` | os três perfis resolvidos, histórico, estado de geração | não |
+| `origem` | de onde o usuário parte e o raio de busca | só a **preferência**, nunca a coordenada |
+
+### Por que a origem persiste o modo, e não a posição
+
+Coordenada de pessoa física é dado pessoal pela LGPD. O `localStorage` guarda apenas o modo
+escolhido (centro, dispositivo ou mercado de referência) e o raio; a posição fica em
+memória. Não há perda: quando a permissão já está concedida, obtê-la de novo é instantâneo
+e **não dispara aviso nenhum do navegador** — por isso a restauração no início da sessão
+não é um pedido às escondidas.
+
+A permissão negada é definitiva: a aplicação não consegue pedir de novo. Daí a regra que a
+store impõe — `obterPosicao` só é chamada a partir de um toque, nunca na montagem de tela.
 
 Só a sessão persiste. Catálogo, listas e recomendações são dados do servidor: mantê-los em
 `localStorage` criaria a chance de mostrar preço velho como se fosse atual — o oposto do

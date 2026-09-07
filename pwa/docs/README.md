@@ -28,10 +28,10 @@ pwa/
 │   ├── App.vue                 # casca: barra de topo e aviso de offline
 │   ├── rotas/indice.ts         # rotas e guarda de autenticação
 │   ├── api/                    # cliente HTTP e tipos do contrato
-│   ├── stores/                 # sessao, catalogo, listas, recomendacao
-│   ├── componentes/            # EstadoDaTela, SeletorDePerfil
+│   ├── stores/                 # sessao, catalogo, listas, recomendacao, origem
+│   ├── componentes/            # EstadoDaTela, SeletorDePerfil, SeletorDeOrigem
 │   ├── telas/                  # as seis telas
-│   ├── utilitarios/            # formatação, armazenamento, conexão
+│   ├── utilitarios/            # formatação, comparação de perfis, localização, conexão
 │   └── estilos/base.css        # tokens e componentes; ver convencoes-de-css.md
 ├── scripts/                    # geração de ícones, verificação de contraste
 └── docs/

@@ -17,7 +17,10 @@ type RecomendacaoPersistida struct {
 	ListaID          int64
 	GeradoEm         time.Time
 	PesoConveniencia float64
-	Payload          json.RawMessage
+	// RaioKm é nulo quando a execução não usou recorte, e também nas gravadas
+	// antes de a coluna existir.
+	RaioKm  *float64
+	Payload json.RawMessage
 }
 
 // SalvarRecomendacao grava o resultado do otimizador para auditoria.
@@ -26,18 +29,20 @@ func (r *Repositorio) SalvarRecomendacao(
 	listaID int64,
 	custoTotalCentavos int64,
 	pesoConveniencia float64,
+	raioKm *float64,
 	payload json.RawMessage,
 ) (RecomendacaoPersistida, error) {
 	const consulta = `
-		INSERT INTO recomendacoes (lista_id, custo_total, parametro_peso_conveniencia, payload_resultado)
-		VALUES ($1, $2::numeric, $3, $4)
+		INSERT INTO recomendacoes (
+			lista_id, custo_total, parametro_peso_conveniencia, parametro_raio_km, payload_resultado)
+		VALUES ($1, $2::numeric, $3, $4, $5)
 		RETURNING id, lista_id, gerado_em, parametro_peso_conveniencia::float8`
 
 	var registro RecomendacaoPersistida
 	err := r.pool.QueryRow(
 		ctx, consulta, listaID,
 		dominio.ConverterCentavosParaReais(custoTotalCentavos),
-		pesoConveniencia, []byte(payload),
+		pesoConveniencia, raioKm, []byte(payload),
 	).Scan(&registro.ID, &registro.ListaID, &registro.GeradoEm, &registro.PesoConveniencia)
 	if err != nil {
 		return RecomendacaoPersistida{}, fmt.Errorf(
@@ -90,7 +95,8 @@ func (r *Repositorio) BuscarRecomendacao(
 	ctx context.Context, recomendacaoID int64,
 ) (RecomendacaoPersistida, error) {
 	const consulta = `
-		SELECT id, lista_id, gerado_em, parametro_peso_conveniencia::float8, payload_resultado
+		SELECT id, lista_id, gerado_em, parametro_peso_conveniencia::float8,
+		       parametro_raio_km::float8, payload_resultado
 		  FROM recomendacoes
 		 WHERE id = $1`
 
@@ -98,7 +104,7 @@ func (r *Repositorio) BuscarRecomendacao(
 	var payload []byte
 	err := r.pool.QueryRow(ctx, consulta, recomendacaoID).Scan(
 		&registro.ID, &registro.ListaID, &registro.GeradoEm,
-		&registro.PesoConveniencia, &payload,
+		&registro.PesoConveniencia, &registro.RaioKm, &payload,
 	)
 	if err != nil {
 		return RecomendacaoPersistida{}, fmt.Errorf(

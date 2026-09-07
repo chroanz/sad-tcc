@@ -86,6 +86,7 @@ erDiagram
         timestamptz gerado_em
         numeric custo_total
         numeric parametro_peso_conveniencia
+        numeric parametro_raio_km
         jsonb payload_resultado
     }
 ```
@@ -196,6 +197,7 @@ serve tanto à view `precos_vigentes` quanto às consultas de série histórica;
 | `gerado_em` | `TIMESTAMPTZ` | sim | Momento da execução do otimizador. Padrão `now()`. |
 | `custo_total` | `NUMERIC(10,2)` | sim | Custo financeiro da alocação, em reais. |
 | `parametro_peso_conveniencia` | `NUMERIC(6,3)` | sim | Peso da parcela logística na função objetivo. |
+| `parametro_raio_km` | `NUMERIC(6,2)` | não | Raio, em linha reta a partir da origem, que selecionou os mercados candidatos. `NULL` significa sem recorte. |
 | `payload_resultado` | `JSONB` | sim | Resposta JSON íntegra do serviço de otimização. |
 
 ### 2.9 View `precos_vigentes`
