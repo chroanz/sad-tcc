@@ -11,6 +11,7 @@ Vue 3 (Composition API com `<script setup>`) + Vite + TypeScript + Pinia + vue-r
 | Documento | Conteúdo |
 |---|---|
 | [`telas-e-navegacao.md`](telas-e-navegacao.md) | cada tela, seus estados e o fluxo de navegação |
+| [`convencoes-de-css.md`](convencoes-de-css.md) | sistema visual, tokens, nomenclatura e acessibilidade |
 | [`estado-e-api.md`](estado-e-api.md) | stores Pinia e o cliente HTTP |
 | [`pwa-e-offline.md`](pwa-e-offline.md) | manifest, service worker e o que funciona sem rede |
 | [`../../docs/contrato-api-rest.md`](../../docs/contrato-api-rest.md) | o contrato com a API Go |
@@ -31,7 +32,8 @@ pwa/
 │   ├── componentes/            # EstadoDaTela, SeletorDePerfil
 │   ├── telas/                  # as seis telas
 │   ├── utilitarios/            # formatação, armazenamento, conexão
-│   └── estilos/base.css
+│   └── estilos/base.css        # tokens e componentes; ver convencoes-de-css.md
+├── scripts/                    # geração de ícones, verificação de contraste
 └── docs/
 ```
 
@@ -47,9 +49,10 @@ A API precisa estar de pé em `VITE_API_URL` (padrão `http://localhost:8080/api
 Sem ela, as telas carregam mas exibem mensagem de erro — nunca tela branca.
 
 ```bash
-npm run build        # verifica tipos e gera dist/ com o service worker
-npm run preview      # serve o build; é aqui que dá para testar a instalação e o offline
+npm run build                 # verifica tipos e gera dist/ com o service worker
+npm run preview               # serve o build; é aqui que dá para testar instalação e offline
 npm run verificar-tipos
+npm run verificar-contraste   # confere a paleta contra a WCAG 2.1, nos dois modos de cor
 ```
 
 O service worker só existe no build. Em `npm run dev` o comportamento offline não é o real.
@@ -73,3 +76,5 @@ desenvolvimento ou refazer o build.
 - Toda tela que carrega dados cobre os quatro estados: carregando, erro, vazio e sucesso.
 - Alvos de toque de no mínimo 44px, coluna única, sem rolagem horizontal na página —
   tabelas largas rolam dentro do próprio contêiner.
+- Nenhum valor de cor, espaço, raio ou tipo escrito solto: tudo vem dos tokens do
+  `base.css`. As regras completas estão em [`convencoes-de-css.md`](convencoes-de-css.md).

@@ -56,6 +56,8 @@ type Resposta struct {
 	CustoTotalCentavos          int64             `json:"custo_total_centavos"`
 	ValorObjetivoCentavos       int64             `json:"valor_objetivo_centavos"`
 	PesoConveniencia            float64           `json:"peso_conveniencia"`
+	CustoPorVisitaCentavos      int64             `json:"custo_por_visita_centavos"`
+	CustoPorKmCentavos          int64             `json:"custo_por_km_centavos"`
 	QuantidadeMercadosVisitados int               `json:"quantidade_mercados_visitados"`
 	DistanciaTotalKm            float64           `json:"distancia_total_km"`
 	Rota                        []ParadaRota      `json:"rota"`

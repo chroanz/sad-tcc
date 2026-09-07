@@ -15,6 +15,7 @@ equilibrando custo financeiro e conveniência logística.
 | entender **o modelo matemático** | [`../modelo/docs/formulacao-matematica.md`](../modelo/docs/formulacao-matematica.md) |
 | entender como as peças se encaixam | [`arquitetura.md`](arquitetura.md) |
 | saber se a recomendação está correta | [`plano-de-testes.md`](plano-de-testes.md) e [`relatorio-validacao.md`](relatorio-validacao.md) |
+| avaliar a **usabilidade da interface** | [`avaliacao-heuristica.md`](avaliacao-heuristica.md) |
 
 ## Documentação transversal
 
@@ -29,6 +30,8 @@ equilibrando custo financeiro e conveniência logística.
 | [`dados-e-coleta.md`](dados-e-coleta.md) | protocolo de coleta de preços e a base de semente |
 | [`plano-de-sprints.md`](plano-de-sprints.md) | cronograma, DoD e registro de riscos |
 | [`plano-de-testes.md`](plano-de-testes.md) | estratégia de verificação e o que já foi executado |
+| [`avaliacao-heuristica.md`](avaliacao-heuristica.md) | usabilidade do PWA pelas 10 heurísticas de Nielsen, com severidade |
+| [`localizacao-e-custo-de-deslocamento.md`](localizacao-e-custo-de-deslocamento.md) | permissão de geolocalização, raio de busca e em que unidade exibir a logística |
 | [`relatorio-validacao.md`](relatorio-validacao.md) | tabela de convergência CP-SAT × enumeração exaustiva (gerada por comando) |
 | [`como-rodar.md`](como-rodar.md) | execução em Docker e local, verificação e problemas comuns |
 
@@ -38,7 +41,7 @@ equilibrando custo financeiro e conveniência logística.
 |---|---|
 | **Otimizador** (`modelo/`) | [`README`](../modelo/docs/README.md) · [formulação matemática](../modelo/docs/formulacao-matematica.md) · [guia do CP-SAT](../modelo/docs/guia-cpsat.md) · [validação e testes](../modelo/docs/validacao-e-testes.md) |
 | **API** (`api/`) | [`README`](../api/docs/README.md) · [arquitetura interna](../api/docs/arquitetura-interna.md) · [fluxo da recomendação](../api/docs/fluxo-recomendacao.md) · [autenticação](../api/docs/autenticacao.md) · [migrations](../api/docs/migracoes.md) · [endpoints](../api/docs/endpoints.md) |
-| **PWA** (`pwa/`) | [`README`](../pwa/docs/README.md) · [telas e navegação](../pwa/docs/telas-e-navegacao.md) · [estado e API](../pwa/docs/estado-e-api.md) · [PWA e offline](../pwa/docs/pwa-e-offline.md) |
+| **PWA** (`pwa/`) | [`README`](../pwa/docs/README.md) · [telas e navegação](../pwa/docs/telas-e-navegacao.md) · [convenções de CSS](../pwa/docs/convencoes-de-css.md) · [estado e API](../pwa/docs/estado-e-api.md) · [PWA e offline](../pwa/docs/pwa-e-offline.md) |
 | **Dados** (`dados/`) | [`README`](../dados/README.md) · [dados e coleta](dados-e-coleta.md) |
 | **Testes de sistema** (`scripts/`) | [`testes_de_sistema.sh`](../scripts/testes_de_sistema.sh) · [plano de testes](plano-de-testes.md) |
 

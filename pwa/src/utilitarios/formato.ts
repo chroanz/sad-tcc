@@ -55,6 +55,30 @@ export function formatarCoordenada(valor: number): string {
   return valor.toFixed(6).replace('.', ',')
 }
 
+/** Palavras curtas não identificam o estabelecimento e por isso não entram nas iniciais. */
+const PALAVRAS_IGNORADAS = new Set(['de', 'da', 'do', 'das', 'dos', 'e'])
+
+/**
+ * Iniciais para o avatar do mercado. Nenhum estabelecimento real é representado no
+ * trabalho, então a marca visual vem do próprio nome em vez de um logotipo.
+ */
+export function iniciaisDe(nome: string): string {
+  const palavras = (nome ?? '')
+    .trim()
+    .split(/\s+/)
+    .filter((palavra) => palavra !== '' && !PALAVRAS_IGNORADAS.has(palavra.toLowerCase()))
+
+  if (palavras.length === 0) return '?'
+  if (palavras.length === 1) return palavras[0].slice(0, 2).toUpperCase()
+  return `${palavras[0][0]}${palavras[1][0]}`.toUpperCase()
+}
+
+/** Link para o aplicativo de mapas do aparelho, a partir das coordenadas do mercado. */
+export function linkDoMapa(latitude: number, longitude: number, nome: string): string {
+  const consulta = encodeURIComponent(`${latitude},${longitude} (${nome})`)
+  return `https://www.google.com/maps/search/?api=1&query=${consulta}`
+}
+
 const MOTIVOS: Record<string, string> = {
   SEM_CANDIDATO_COM_ESTOQUE: 'Nenhum mercado tem esse item com estoque suficiente.',
   SEM_PRECO_CADASTRADO: 'Nenhum mercado tem preço cadastrado para esse item.',

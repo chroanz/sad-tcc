@@ -33,16 +33,19 @@ async function enviar(): Promise<void> {
 
 <template>
   <section class="abertura">
-    <h1>Compra Certa</h1>
-    <p class="suave">
-      Monte sua lista e descubra em quais supermercados de Juazeiro do Norte comprar cada
-      item, equilibrando preço e deslocamento.
-    </p>
+    <div class="hero">
+      <span class="hero__sinal" aria-hidden="true">CC</span>
+      <h1>Compra Certa</h1>
+      <p>
+        Monte sua lista e descubra em quais supermercados de Juazeiro do Norte comprar cada
+        item, equilibrando preço e deslocamento.
+      </p>
+    </div>
 
     <form class="cartao" novalidate @submit.prevent="enviar">
       <h2>{{ titulo }}</h2>
 
-      <p v-if="sessao.erro" class="aviso erro" role="alert">{{ sessao.erro }}</p>
+      <p v-if="sessao.erro" class="aviso aviso--erro" role="alert">{{ sessao.erro }}</p>
 
       <label v-if="modoCadastro" class="campo">
         <span>Nome</span>
@@ -63,14 +66,22 @@ async function enviar(): Promise<void> {
           minlength="8"
           required
         />
-        <small v-if="modoCadastro" class="suave">Mínimo de 8 caracteres.</small>
+        <small v-if="modoCadastro" class="mini">Mínimo de 8 caracteres.</small>
       </label>
 
-      <button type="submit" class="largura-total" :disabled="sessao.carregando">
+      <button
+        type="submit"
+        class="botao botao--primario botao--bloco"
+        :disabled="sessao.carregando"
+      >
         {{ sessao.carregando ? 'Enviando…' : titulo }}
       </button>
 
-      <button type="button" class="discreto largura-total" @click="alternarModo">
+      <button
+        type="button"
+        class="botao botao--fantasma botao--bloco alternar"
+        @click="alternarModo"
+      >
         {{ modoCadastro ? 'Já tenho conta' : 'Criar uma conta' }}
       </button>
     </form>
@@ -80,6 +91,36 @@ async function enviar(): Promise<void> {
 <style scoped>
 .abertura {
   max-width: 420px;
-  margin: 1rem auto;
+  margin: 0 auto;
+  padding-top: var(--esp-6);
+}
+
+.hero {
+  text-align: center;
+  margin-bottom: var(--esp-6);
+}
+
+.hero__sinal {
+  display: inline-grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  margin-bottom: var(--esp-3);
+  border-radius: var(--raio-grande);
+  background: var(--cor-marca);
+  color: var(--cor-texto-inverso);
+  font-size: var(--fonte-grande);
+  font-weight: var(--peso-extra);
+  letter-spacing: -0.02em;
+}
+
+.hero p {
+  margin: 0;
+  color: var(--cor-texto-suave);
+  font-size: var(--fonte-pequena);
+}
+
+.alternar {
+  margin-top: var(--esp-2);
 }
 </style>

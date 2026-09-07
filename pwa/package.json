@@ -9,7 +9,8 @@
     "build": "vue-tsc --noEmit && vite build",
     "verificar-tipos": "vue-tsc --noEmit",
     "preview": "vite preview --port 4173",
-    "gerar-icones": "node scripts/gerar-icones.mjs"
+    "gerar-icones": "node scripts/gerar-icones.mjs",
+    "verificar-contraste": "node scripts/verificar-contraste.mjs"
   },
   "dependencies": {
     "pinia": "^2.3.0",

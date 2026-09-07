@@ -173,13 +173,31 @@ fora do escopo da PoC (e explicitamente adiado no `plano_desenvolvimento.md`).
 
 **Por que é aceitável.** A ida e volta independente é uma **cota superior** da rota real:
 visitar $n$ mercados em circuito nunca custa mais do que fazer $n$ viagens separadas de
-casa. O modelo, portanto, é conservador — ele nunca subestima o incômodo de espalhar a
-compra. No raio de ~7 km do recorte de Juazeiro do Norte, a diferença entre as duas
-medidas é pequena o bastante para não inverter decisões.
+casa. O modelo, portanto, é conservador — nunca subestima o incômodo de espalhar a compra.
+
+**Quanto custa essa aproximação.** A folga entre as duas medidas não é uniforme: ela cresce
+com o número de mercados. Medindo na base de semente de Juazeiro do Norte, com 18 itens e
+6 mercados:
+
+| Perfil | Mercados | Distância linearizada | Rota real | Sobrepreço |
+|---|---|---|---|---|
+| Equilibrado | 2 | 8,14 km | 7,65 km | +6% |
+| Econômico | 6 | 35,58 km | 21,90 km | **+62%** |
+
+Com dois mercados a aproximação é quase exata. Com seis, o modelo cobra por uma viagem que
+ninguém faria. **A linearização não é neutra: ela penaliza sistematicamente as soluções com
+muitas paradas**, ou seja, o perfil econômico. Uma formulação com roteirização real
+provavelmente escolheria mais mercados do que esta escolhe.
+
+Os números saem da própria resposta do serviço, que ecoa
+`custo_por_visita_centavos` e `custo_por_km_centavos`: descontando as visitas do
+`custo_logistico_centavos` e dividindo pelo custo por quilômetro, obtém-se a distância
+linearizada, comparável ao `distancia_total_km` da rota.
 
 **O que se perde.** O modelo não captura que dois mercados vizinhos podem ser visitados
-quase de graça na mesma viagem. Essa é a limitação a declarar na defesa, e a porta natural
-para o trabalho futuro com o módulo de Routing do OR-Tools.
+quase de graça na mesma viagem. É a limitação a declarar na defesa — agora com magnitude
+medida, e não apenas descrita — e a porta natural para o trabalho futuro com o módulo de
+Routing do OR-Tools.
 
 ## 8. Desempate determinístico em duas fases
 

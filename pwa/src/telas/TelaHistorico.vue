@@ -31,13 +31,27 @@ async function abrir(recomendacaoId: number): Promise<void> {
 <template>
   <section>
     <RouterLink :to="{ name: 'resultado', params: { id: listaId } }" class="voltar">
-      ← Recomendação
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M15 6l-6 6 6 6" />
+      </svg>
+      Recomendação
     </RouterLink>
-    <h1>Histórico</h1>
-    <p class="suave">
-      Cada recomendação é guardada como foi gerada. Reabrir não recalcula nada, o que
-      permite comparar perfis e coletas de preço diferentes.
-    </p>
+
+    <div class="cabecalho-tela">
+      <h1>Histórico</h1>
+      <p>
+        Cada recomendação é guardada como foi gerada. Reabrir não recalcula nada, o que
+        permite comparar perfis e coletas de preço diferentes.
+      </p>
+    </div>
 
     <EstadoDaTela
       :carregando="recomendacao.carregando"
@@ -48,38 +62,43 @@ async function abrir(recomendacaoId: number): Promise<void> {
       @tentar-novamente="recomendacao.carregarHistorico(listaId)"
     >
       <ul class="colecao">
-        <li v-for="item in recomendacao.historico" :key="item.id" class="cartao">
+        <li v-for="item in recomendacao.historico" :key="item.id" class="cartao registro">
           <div class="linha-entre">
-            <div>
-              <strong>{{ formatarReais(item.custo_total_centavos) }}</strong>
-              <p class="suave sem-margem">
+            <div class="crescer">
+              <strong class="valor">{{ formatarReais(item.custo_total_centavos) }}</strong>
+              <p class="mini dados">
+                <span v-if="item.perfil" class="selo selo--marca">
+                  {{ rotuloDePerfil[item.perfil] ?? item.perfil }}
+                </span>
+                <span v-else-if="item.peso_conveniencia !== undefined" class="selo">
+                  peso {{ item.peso_conveniencia }}
+                </span>
                 {{ formatarDataHora(item.gerado_em) }}
-                <template v-if="item.perfil">
-                  · {{ rotuloDePerfil[item.perfil] ?? item.perfil }}
-                </template>
-                <template v-else-if="item.peso_conveniencia !== undefined">
-                  · peso {{ item.peso_conveniencia }}
-                </template>
               </p>
             </div>
-            <button type="button" class="secundario" @click="abrir(item.id)">Abrir</button>
+            <button type="button" class="botao botao--secundario botao--pequeno" @click="abrir(item.id)">
+              Abrir
+            </button>
           </div>
         </li>
       </ul>
     </EstadoDaTela>
 
-    <div v-if="recomendacao.atual" class="cartao" aria-live="polite">
-      <h2>Recomendação #{{ recomendacao.atual.id }}</h2>
-      <p class="suave">
-        Gerada em {{ formatarDataHora(recomendacao.atual.gerado_em) }} ·
-        {{ recomendacao.atual.quantidade_mercados_visitados }} mercado(s) ·
-        {{ formatarReais(recomendacao.atual.custo_total_centavos) }}
+    <div v-if="recomendacao.recomendacaoAberta" class="cartao cartao--marca" aria-live="polite">
+      <h2>Recomendação #{{ recomendacao.recomendacaoAberta.id }}</h2>
+      <p class="mini">
+        Gerada em {{ formatarDataHora(recomendacao.recomendacaoAberta.gerado_em) }} ·
+        {{ recomendacao.recomendacaoAberta.quantidade_mercados_visitados }} mercado(s) ·
+        {{ formatarReais(recomendacao.recomendacaoAberta.custo_total_centavos) }}
       </p>
 
       <ol class="resumo-rota">
-        <li v-for="compra in recomendacao.atual.compras_por_mercado" :key="compra.mercado_id">
+        <li
+          v-for="compra in recomendacao.recomendacaoAberta.compras_por_mercado"
+          :key="compra.mercado_id"
+        >
           <strong>{{ compra.nome }}</strong>
-          <span class="suave">
+          <span class="mini">
             {{ compra.itens.length }} item(ns) ·
             {{ formatarReais(compra.subtotal_centavos) }}
           </span>
@@ -90,14 +109,27 @@ async function abrir(recomendacaoId: number): Promise<void> {
 </template>
 
 <style scoped>
-.voltar {
-  display: inline-block;
-  margin-bottom: 0.5rem;
-  font-size: 0.9rem;
-  text-decoration: none;
+.voltar svg {
+  width: 16px;
+  height: 16px;
 }
 
-.colecao,
+.registro {
+  padding: var(--esp-3) var(--esp-4);
+}
+
+.registro .valor {
+  font-size: var(--fonte-media);
+}
+
+.dados {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--esp-2);
+  margin: var(--esp-1) 0 0;
+}
+
 .resumo-rota {
   list-style: none;
   padding: 0;
@@ -107,11 +139,11 @@ async function abrir(recomendacaoId: number): Promise<void> {
 .resumo-rota li {
   display: flex;
   flex-direction: column;
-  padding: 0.4rem 0;
-  border-bottom: 1px solid var(--cor-borda);
+  padding: var(--esp-2) 0;
+  border-bottom: 1px solid var(--cor-marca-borda);
 }
 
-.sem-margem {
-  margin: 0.15rem 0 0;
+.resumo-rota li:last-child {
+  border-bottom: none;
 }
 </style>

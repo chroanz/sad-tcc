@@ -124,6 +124,8 @@ descartado na construção do modelo (restrição de estoque suficiente).
   "custo_total_centavos": 12345,
   "valor_objetivo_centavos": 12345,
   "peso_conveniencia": 1.0,
+  "custo_por_visita_centavos": 800,
+  "custo_por_km_centavos": 120,
   "quantidade_mercados_visitados": 2,
   "distancia_total_km": 7.42,
   "rota": [
@@ -178,6 +180,7 @@ descartado na construção do modelo (restrição de estoque suficiente).
 | `status` | `OTIMO` (ótimo provado), `VIAVEL` (solução encontrada, limite de tempo atingido) ou `INVIAVEL` |
 | `custo_itens_centavos` | soma dos itens efetivamente alocados |
 | `custo_logistico_centavos` | `custo_por_visita * nº mercados + custo_por_km * distância linearizada`, **sem** o peso |
+| `custo_por_visita_centavos` / `custo_por_km_centavos` | os parâmetros **efetivamente usados** — os enviados na requisição ou, na ausência deles, os padrões `MODELO_*` do serviço. Ecoá-los é o que torna `custo_logistico_centavos` auditável: sem eles o valor não tem procedência |
 | `custo_total_centavos` | `custo_itens + custo_logistico` — o que o usuário de fato gasta/despende |
 | `valor_objetivo_centavos` | valor da função objetivo, **com** o peso aplicado e sem as penalidades |
 | `distancia_total_km` | distância da rota real sugerida (origem → mercados na ordem → origem) |

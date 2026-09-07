@@ -7,11 +7,23 @@
 | `sessao` | token e usuário logado | sim, em `localStorage` |
 | `catalogo` | produtos, mercados e marcas por produto | não, memória da aba |
 | `listas` | listas do usuário e a lista aberta, com os itens | não |
-| `recomendacao` | recomendação atual, histórico, estado de geração | não |
+| `recomendacao` | os três perfis resolvidos, histórico, estado de geração | não |
 
 Só a sessão persiste. Catálogo, listas e recomendações são dados do servidor: mantê-los em
 `localStorage` criaria a chance de mostrar preço velho como se fosse atual — o oposto do
 que um sistema de decisão de compra deve fazer.
+
+### Por que a store de recomendação sabe a qual lista pertence
+
+A store é global e as telas são reaproveitadas entre listas. Sem um dono declarado, o
+roteiro da lista A permaneceria na tela ao abrir a lista B — o achado A01 da
+[avaliação heurística](../../docs/avaliacao-heuristica.md). Três mecanismos evitam isso:
+
+| Mecanismo | Papel |
+|---|---|
+| `focarLista(id)` | descarta tudo quando a lista exibida muda |
+| `invalidarResultados()` | chamado pela store `listas` a cada item incluído, alterado ou removido — outra cesta, outro roteiro |
+| `recomendacaoAberta` separado de `resultadosPorPerfil` | consultar o histórico não altera o que a tela de recomendação mostra |
 
 ## Caminho de uma requisição
 
@@ -25,17 +37,17 @@ sequenceDiagram
     participant API as API Go
 
     U->>T: clica em "Gerar recomendação"
-    T->>S: recomendacao.gerar(listaId, pedido)
+    T->>S: recomendacao.gerarTodosOsPerfis(listaId)
     S->>S: gerando = true, erro = null
-    S->>C: requisitar POST /listas/1/recomendacoes
+    S->>C: POST /listas/1/recomendacoes × 3 (em paralelo)
     C->>C: anexa Authorization: Bearer
     C->>API: fetch
     alt Sucesso
         API-->>C: 201 com a recomendação
         C-->>S: objeto tipado
-        S->>S: atual = recomendação
+        S->>S: resultadosPorPerfil[perfil] = recomendação
         S-->>T: retorna
-        T-->>U: roteiro, custos e economia
+        T-->>U: comparação dos perfis, roteiro, custos e economia
     else Erro de negócio
         API-->>C: 4xx com envelope {erro:{codigo,mensagem}}
         C->>C: lança ErroApi com o código
@@ -52,6 +64,15 @@ sequenceDiagram
 
 O `finally` que devolve `gerando`/`carregando` a `false` é o que impede a tela de ficar
 travada em "Carregando…" depois de um erro.
+
+As três chamadas saem juntas por `Promise.allSettled`, e não em sequência: cada resolução
+custa dezenas de milissegundos, e ter os três perfis na mão é o que permite mostrar o
+trade-off entre preço e deslocamento lado a lado. O `allSettled` isola as falhas — se um
+perfil não resolver, os outros dois continuam sendo apresentados, e a mensagem de erro só
+aparece quando nenhum dos três volta.
+
+Medição na pilha real (semente de 18 itens, 6 mercados): **76 ms** para as três em
+paralelo, contra cerca de 40 ms de uma única execução isolada.
 
 ## O cliente HTTP
 

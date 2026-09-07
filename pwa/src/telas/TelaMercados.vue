@@ -2,7 +2,7 @@
 import { onMounted } from 'vue'
 import EstadoDaTela from '@/componentes/EstadoDaTela.vue'
 import { useCatalogoStore } from '@/stores/catalogo'
-import { formatarCoordenada } from '@/utilitarios/formato'
+import { iniciaisDe, linkDoMapa } from '@/utilitarios/formato'
 
 const catalogo = useCatalogoStore()
 
@@ -13,11 +13,13 @@ onMounted(() => {
 
 <template>
   <section>
-    <h1>Mercados</h1>
-    <p class="suave">
-      Supermercados considerados nas recomendações. O recorte do trabalho é Juazeiro do
-      Norte/CE, num raio de aproximadamente 7 km do centro.
-    </p>
+    <div class="cabecalho-tela">
+      <h1>Mercados</h1>
+      <p>
+        Supermercados considerados nas recomendações. O recorte do trabalho é Juazeiro do
+        Norte/CE, num raio de aproximadamente 7 km do centro.
+      </p>
+    </div>
 
     <EstadoDaTela
       :carregando="catalogo.carregandoMercados"
@@ -28,13 +30,22 @@ onMounted(() => {
       @tentar-novamente="catalogo.carregarMercados(true)"
     >
       <ul class="colecao">
-        <li v-for="mercado in catalogo.mercados" :key="mercado.id" class="cartao">
-          <strong>{{ mercado.nome }}</strong>
-          <p class="suave sem-margem">{{ mercado.endereco }}</p>
-          <p class="suave coordenadas">
-            {{ formatarCoordenada(mercado.latitude) }},
-            {{ formatarCoordenada(mercado.longitude) }}
-          </p>
+        <li v-for="mercado in catalogo.mercados" :key="mercado.id" class="cartao mercado">
+          <span class="avatar" aria-hidden="true">{{ iniciaisDe(mercado.nome) }}</span>
+
+          <div class="crescer">
+            <strong>{{ mercado.nome }}</strong>
+            <p class="mini endereco">{{ mercado.endereco }}</p>
+            <!-- Coordenada crua é dado de depuração; o que serve ao usuário é chegar lá. -->
+            <a
+              class="botao botao--fantasma botao--pequeno mapa"
+              :href="linkDoMapa(mercado.latitude, mercado.longitude, mercado.nome)"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Ver no mapa
+            </a>
+          </div>
         </li>
       </ul>
     </EstadoDaTela>
@@ -42,19 +53,18 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.colecao {
-  list-style: none;
-  padding: 0;
-  margin: 0;
+.mercado {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--esp-3);
 }
 
-.sem-margem {
-  margin: 0.15rem 0 0;
+.endereco {
+  margin: 2px 0 var(--esp-2);
 }
 
-.coordenadas {
-  margin: 0.25rem 0 0;
-  font-size: 0.8rem;
-  font-variant-numeric: tabular-nums;
+.mapa {
+  margin-left: calc(var(--esp-4) * -1);
+  color: var(--cor-marca-forte);
 }
 </style>

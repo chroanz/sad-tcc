@@ -189,6 +189,8 @@ Perfis e seus pesos:
   "custo_itens_centavos": 11000,
   "custo_logistico_centavos": 1345,
   "custo_total_centavos": 12345,
+  "custo_por_visita_centavos": 800,
+  "custo_por_km_centavos": 120,
   "quantidade_mercados_visitados": 2,
   "distancia_total_km": 7.42,
   "rota": [ { "ordem": 1, "mercado_id": 3, "nome": "Mercado Central", "distancia_do_anterior_km": 2.1 } ],

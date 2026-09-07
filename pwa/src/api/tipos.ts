@@ -169,6 +169,12 @@ export interface Recomendacao {
   custo_itens_centavos: number
   custo_logistico_centavos: number
   custo_total_centavos: number
+  /**
+   * Parâmetros que produziram `custo_logistico_centavos`. Ausentes (0) em recomendações
+   * gravadas antes de o contrato passar a ecoá-los.
+   */
+  custo_por_visita_centavos?: number
+  custo_por_km_centavos?: number
   quantidade_mercados_visitados: number
   distancia_total_km: number
   rota: ParadaRota[]

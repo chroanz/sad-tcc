@@ -211,6 +211,11 @@ class RespostaOtimizacao(BaseModel):
     custo_total_centavos: int
     valor_objetivo_centavos: int
     peso_conveniencia: float
+    # Os dois parâmetros logísticos voltam junto do resultado porque são o que torna
+    # `custo_logistico_centavos` auditável: sem eles o valor é um número sem procedência,
+    # tanto para o usuário quanto para a comparação de execuções da Fase 4.
+    custo_por_visita_centavos: int
+    custo_por_km_centavos: int
     quantidade_mercados_visitados: int
     distancia_total_km: float
     rota: List[ParadaRota] = Field(default_factory=list)

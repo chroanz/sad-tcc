@@ -1,273 +1,960 @@
 /*
- * Estilo base do PWA. Mobile-first: o layout é de coluna única e só ganha respiro em
- * telas maiores. Alvos de toque com no mínimo 44px, conforme o requisito de usabilidade.
+ * Sistema visual do Compra Certa.
+ *
+ * Duas camadas de token: a paleta bruta (--verde-500, --tinta-900) nunca é usada direto
+ * pelos componentes, e os papéis semânticos (--cor-marca, --cor-texto) são o que as telas
+ * consomem. É essa separação que faz o modo escuro ser uma redefinição de papéis, e não
+ * uma segunda folha de estilo.
+ *
+ * As convenções e a heurística de Nielsen que cada uma atende estão em
+ * docs/convencoes-de-css.md.
  */
 
+/* ==========================================================================
+   1. Paleta bruta
+   ========================================================================== */
+
 :root {
-  --cor-fundo: #f6f7f9;
-  --cor-superficie: #ffffff;
-  --cor-borda: #dfe3e8;
-  --cor-texto: #1c2430;
-  --cor-texto-suave: #5a6675;
-  --cor-primaria: #2f5d8a;
-  --cor-primaria-escura: #244a70;
-  --cor-sucesso: #2f7a4d;
-  --cor-sucesso-fundo: #eaf5ee;
-  --cor-alerta: #8a5a00;
-  --cor-alerta-fundo: #fdf6e3;
-  --cor-erro: #b3261e;
-  --cor-erro-fundo: #fdecea;
-  --raio: 10px;
-  --sombra: 0 1px 3px rgba(20, 30, 45, 0.08);
+  /* Verde: a marca. O propósito do aplicativo é economizar, e economia é verde. */
+  --verde-50: #e8f6ef;
+  --verde-100: #c3e8d5;
+  --verde-500: #0e8f5e;
+  --verde-600: #0b7a4f;
+  --verde-700: #085c3b;
+
+  /* Âmbar: calor, destaque e atenção. Dá o tom de aplicativo de comida sem virar alarme. */
+  --ambar-50: #fff4e5;
+  --ambar-100: #ffe3bf;
+  --ambar-500: #f59e0b;
+  --ambar-700: #8a5a06;
+
+  /* Coral: erro e remoção. Menos saturado que vermelho puro, não compete com a marca. */
+  --coral-50: #fdeceb;
+  --coral-100: #f8cfcc;
+  --coral-500: #d93f35;
+  --coral-700: #9b2c24;
+
+  /* Neutros com leve viés verde: coesão de marca sem tingir o texto. */
+  --tinta-0: #ffffff;
+  --tinta-25: #f7f9f8;
+  --tinta-50: #eff3f1;
+  --tinta-100: #e0e6e2;
+  /* Contorno de campo, chip e botão secundário; escuro o bastante para a WCAG 1.4.11. */
+  --tinta-300: #78857e;
+  --tinta-500: #5d6862;
+  --tinta-700: #39423d;
+  --tinta-900: #141b17;
+
+  /* Tipografia: escala 1.2 arredondada, com salto maior nos dois extremos. */
+  --fonte-mini: 0.75rem;
+  --fonte-pequena: 0.8125rem;
+  --fonte-base: 0.9375rem;
+  --fonte-media: 1.0625rem;
+  --fonte-grande: 1.25rem;
+  --fonte-titulo: 1.5rem;
+  --fonte-valor: 2rem;
+
+  --peso-normal: 400;
+  --peso-medio: 600;
+  --peso-forte: 700;
+  --peso-extra: 800;
+
+  /* Espaçamento: base 4px. Nenhuma margem fora desta escala. */
+  --esp-1: 0.25rem;
+  --esp-2: 0.5rem;
+  --esp-3: 0.75rem;
+  --esp-4: 1rem;
+  --esp-5: 1.25rem;
+  --esp-6: 1.5rem;
+  --esp-8: 2rem;
+  --esp-10: 2.5rem;
+
+  /* Raios generosos: a assinatura visual da categoria. */
+  --raio-pequeno: 8px;
+  --raio: 14px;
+  --raio-grande: 20px;
+  --raio-pilula: 999px;
+
+  --sombra-baixa: 0 1px 2px rgba(20, 27, 23, 0.06);
+  --sombra: 0 2px 8px rgba(20, 27, 23, 0.07);
+  --sombra-alta: 0 -2px 16px rgba(20, 27, 23, 0.1);
+
+  /* Alvos de toque: 44px é o mínimo acessível, 52px é o confortável do polegar. */
   --alvo-toque: 44px;
+  --alvo-confortavel: 52px;
+
+  --altura-nav: 60px;
+  --altura-acao: 76px;
+  --largura-conteudo: 680px;
+
+  --transicao: 140ms ease-out;
 }
 
-* {
+/* ==========================================================================
+   2. Papéis semânticos
+   ========================================================================== */
+
+:root {
+  --cor-fundo: var(--tinta-25);
+  --cor-superficie: var(--tinta-0);
+  --cor-superficie-alt: var(--tinta-50);
+  --cor-borda: var(--tinta-100);
+  --cor-borda-forte: var(--tinta-300);
+
+  --cor-texto: var(--tinta-900);
+  --cor-texto-suave: var(--tinta-500);
+  --cor-texto-inverso: #ffffff;
+
+  /* Tom sólido escuro o bastante para o rótulo do botão passar em AA sobre ele. */
+  --cor-marca: var(--verde-600);
+  --cor-marca-forte: var(--verde-700);
+  --cor-marca-tenue: var(--verde-50);
+  --cor-marca-borda: var(--verde-100);
+
+  --cor-destaque: var(--ambar-500);
+  --cor-destaque-texto: var(--ambar-700);
+  --cor-destaque-tenue: var(--ambar-50);
+  --cor-destaque-borda: var(--ambar-100);
+
+  --cor-erro: var(--coral-500);
+  --cor-erro-texto: var(--coral-700);
+  --cor-erro-tenue: var(--coral-50);
+  --cor-erro-borda: var(--coral-100);
+
+  --cor-foco: var(--verde-600);
+}
+
+/*
+ * Modo escuro: só os papéis mudam. Nenhum componente abaixo sabe que ele existe.
+ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --cor-fundo: #0d1210;
+    --cor-superficie: #161d1a;
+    --cor-superficie-alt: #1e2723;
+    --cor-borda: #2a3430;
+    --cor-borda-forte: #6b7a73;
+
+    --cor-texto: #eaf0ec;
+    --cor-texto-suave: #9aa8a1;
+    /* No escuro o sólido da marca é claro, então o que corre sobre ele precisa ser escuro. */
+    --cor-texto-inverso: #08130e;
+
+    --cor-marca: #2eb37c;
+    --cor-marca-forte: #46c48f;
+    --cor-marca-tenue: #102a20;
+    --cor-marca-borda: #1d4536;
+
+    --cor-destaque: #f0a92c;
+    --cor-destaque-texto: #f5c675;
+    --cor-destaque-tenue: #2b2010;
+    --cor-destaque-borda: #4a3717;
+
+    --cor-erro: #ef6b60;
+    --cor-erro-texto: #f79c94;
+    --cor-erro-tenue: #2c1512;
+    --cor-erro-borda: #4d241f;
+
+    --cor-foco: #46c48f;
+
+    --sombra-baixa: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --sombra: 0 2px 8px rgba(0, 0, 0, 0.45);
+    --sombra-alta: 0 -2px 16px rgba(0, 0, 0, 0.55);
+  }
+}
+
+/* ==========================================================================
+   3. Base do documento
+   ========================================================================== */
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
   background: var(--cor-fundo);
   color: var(--cor-texto);
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  font-size: 16px;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  font-size: var(--fonte-base);
   line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  /* O menu inferior é fixo; nada deve rolar por baixo dele sem folga. */
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 h1,
 h2,
 h3 {
-  margin: 0 0 0.5rem;
-  line-height: 1.25;
+  margin: 0 0 var(--esp-2);
+  line-height: 1.2;
+  letter-spacing: -0.015em;
 }
 
 h1 {
-  font-size: 1.4rem;
+  font-size: var(--fonte-titulo);
+  font-weight: var(--peso-extra);
 }
 
 h2 {
-  font-size: 1.15rem;
+  font-size: var(--fonte-media);
+  font-weight: var(--peso-forte);
 }
 
 h3 {
-  font-size: 1rem;
+  font-size: var(--fonte-base);
+  font-weight: var(--peso-forte);
 }
 
 p {
-  margin: 0 0 0.75rem;
+  margin: 0 0 var(--esp-3);
 }
 
 a {
-  color: var(--cor-primaria);
+  color: var(--cor-marca-forte);
+  font-weight: var(--peso-medio);
 }
 
-.conteudo {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 1rem 1rem 4rem;
+/* Foco visível e uniforme: a navegação por teclado nunca fica sem âncora. */
+:focus-visible {
+  outline: 3px solid var(--cor-foco);
+  outline-offset: 2px;
+  border-radius: var(--raio-pequeno);
 }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ==========================================================================
+   4. Casca: barra de topo, menu inferior, barra de ação
+   ========================================================================== */
+
+.conteudo {
+  max-width: var(--largura-conteudo);
+  margin: 0 auto;
+  padding: var(--esp-4) var(--esp-4);
+  /* Folga para o menu inferior e para a barra de ação fixa. */
+  padding-bottom: calc(var(--altura-nav) + var(--altura-acao) + env(safe-area-inset-bottom));
+}
+
+.barra-topo {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--cor-superficie);
+  border-bottom: 1px solid var(--cor-borda);
+}
+
+.barra-topo__interno {
+  max-width: var(--largura-conteudo);
+  margin: 0 auto;
+  padding: var(--esp-2) var(--esp-4);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--esp-2);
+  min-height: var(--alvo-confortavel);
+}
+
+.marca {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--esp-2);
+  font-size: var(--fonte-media);
+  font-weight: var(--peso-extra);
+  letter-spacing: -0.02em;
+  color: var(--cor-texto);
+  text-decoration: none;
+}
+
+.marca__sinal {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--raio-pequeno);
+  background: var(--cor-marca);
+  color: var(--cor-texto-inverso);
+  display: grid;
+  place-items: center;
+  font-size: var(--fonte-mini);
+  font-weight: var(--peso-extra);
+}
+
+/*
+ * Menu inferior: os destinos ficam permanentemente visíveis e ao alcance do polegar,
+ * em vez de esperarem ser lembrados.
+ */
+.barra-navegacao {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  display: flex;
+  background: var(--cor-superficie);
+  border-top: 1px solid var(--cor-borda);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.barra-navegacao__item {
+  flex: 1;
+  min-height: var(--altura-nav);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: var(--esp-1);
+  font-size: var(--fonte-mini);
+  font-weight: var(--peso-medio);
+  color: var(--cor-texto-suave);
+  text-decoration: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: color var(--transicao);
+}
+
+.barra-navegacao__item svg {
+  width: 22px;
+  height: 22px;
+}
+
+.barra-navegacao__item.router-link-active {
+  color: var(--cor-marca-forte);
+}
+
+/* Marcador da aba ativa: cor sozinha não é sinal suficiente. */
+.barra-navegacao__item.router-link-active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  width: 28px;
+  height: 3px;
+  border-radius: 0 0 var(--raio-pequeno) var(--raio-pequeno);
+  background: var(--cor-marca);
+}
+
+.barra-navegacao__item {
+  position: relative;
+}
+
+/*
+ * Barra de ação fixa: a ação principal da tela acompanha a rolagem, com o estado atual
+ * (quantos itens, quanto custa) sempre à vista.
+ */
+.barra-acao {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--altura-nav) + env(safe-area-inset-bottom));
+  z-index: 25;
+  background: var(--cor-superficie);
+  border-top: 1px solid var(--cor-borda);
+  box-shadow: var(--sombra-alta);
+}
+
+.barra-acao__interno {
+  max-width: var(--largura-conteudo);
+  margin: 0 auto;
+  padding: var(--esp-3) var(--esp-4);
+  display: flex;
+  align-items: center;
+  gap: var(--esp-3);
+}
+
+.barra-acao__resumo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.barra-acao__rotulo {
+  font-size: var(--fonte-mini);
+  color: var(--cor-texto-suave);
+}
+
+.barra-acao__valor {
+  font-size: var(--fonte-media);
+  font-weight: var(--peso-forte);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (min-width: 900px) {
+  .barra-navegacao {
+    display: none;
+  }
+
+  .conteudo {
+    padding: var(--esp-6) var(--esp-4);
+    padding-bottom: calc(var(--altura-acao) + var(--esp-6));
+  }
+
+  .barra-acao {
+    bottom: 0;
+  }
+}
+
+/* ==========================================================================
+   5. Cabeçalho de tela
+   ========================================================================== */
+
+.cabecalho-tela {
+  margin-bottom: var(--esp-4);
+}
+
+.cabecalho-tela p {
+  margin: 0;
+  color: var(--cor-texto-suave);
+  font-size: var(--fonte-pequena);
+}
+
+.voltar {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--esp-1);
+  min-height: var(--alvo-toque);
+  margin-left: calc(var(--esp-2) * -1);
+  padding: 0 var(--esp-2);
+  border-radius: var(--raio-pequeno);
+  font-size: var(--fonte-pequena);
+  font-weight: var(--peso-medio);
+  color: var(--cor-texto-suave);
+  text-decoration: none;
+}
+
+/* ==========================================================================
+   6. Superfícies
+   ========================================================================== */
 
 .cartao {
   background: var(--cor-superficie);
   border: 1px solid var(--cor-borda);
   border-radius: var(--raio);
-  box-shadow: var(--sombra);
-  padding: 1rem;
-  margin-bottom: 0.75rem;
+  box-shadow: var(--sombra-baixa);
+  padding: var(--esp-4);
+  margin-bottom: var(--esp-3);
 }
 
-/* ---------- Formulários ---------- */
+.cartao--plano {
+  box-shadow: none;
+}
+
+.cartao--marca {
+  background: var(--cor-marca-tenue);
+  border-color: var(--cor-marca-borda);
+}
+
+.cartao--destaque {
+  background: var(--cor-destaque-tenue);
+  border-color: var(--cor-destaque-borda);
+}
+
+/* Cartão inteiro clicável, com resposta tátil ao toque. */
+.cartao--toque {
+  display: block;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: transform var(--transicao), box-shadow var(--transicao);
+}
+
+.cartao--toque:active {
+  transform: scale(0.99);
+  box-shadow: none;
+}
+
+.colecao {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* ==========================================================================
+   7. Botões
+   ========================================================================== */
+
+.botao {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--esp-2);
+  min-height: var(--alvo-confortavel);
+  padding: 0 var(--esp-5);
+  font: inherit;
+  font-size: var(--fonte-base);
+  font-weight: var(--peso-forte);
+  border: 1px solid transparent;
+  border-radius: var(--raio-pilula);
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background var(--transicao), transform var(--transicao);
+}
+
+.botao:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.botao:disabled,
+.botao[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.botao--primario {
+  background: var(--cor-marca);
+  color: var(--cor-texto-inverso);
+}
+
+.botao--primario:hover:not(:disabled) {
+  background: var(--cor-marca-forte);
+}
+
+.botao--secundario {
+  background: var(--cor-superficie);
+  color: var(--cor-marca-forte);
+  border-color: var(--cor-borda-forte);
+}
+
+.botao--fantasma {
+  background: none;
+  color: var(--cor-texto-suave);
+  border-color: transparent;
+  font-weight: var(--peso-medio);
+}
+
+.botao--perigo {
+  background: var(--cor-superficie);
+  color: var(--cor-erro);
+  border-color: var(--cor-erro-borda);
+}
+
+.botao--bloco {
+  width: 100%;
+}
+
+.botao--pequeno {
+  min-height: var(--alvo-toque);
+  padding: 0 var(--esp-4);
+  font-size: var(--fonte-pequena);
+}
+
+/* ==========================================================================
+   8. Formulários
+   ========================================================================== */
 
 .campo {
   display: block;
-  margin-bottom: 0.85rem;
+  margin-bottom: var(--esp-4);
 }
 
 .campo > span {
   display: block;
-  font-size: 0.85rem;
-  font-weight: 600;
+  font-size: var(--fonte-pequena);
+  font-weight: var(--peso-medio);
   color: var(--cor-texto-suave);
-  margin-bottom: 0.25rem;
+  margin-bottom: var(--esp-1);
 }
 
 input,
 select,
 textarea {
   width: 100%;
-  min-height: var(--alvo-toque);
-  padding: 0.5rem 0.65rem;
+  min-height: var(--alvo-confortavel);
+  padding: 0 var(--esp-4);
   font: inherit;
-  color: inherit;
+  font-size: var(--fonte-base);
+  color: var(--cor-texto);
   background: var(--cor-superficie);
-  border: 1px solid var(--cor-borda);
+  border: 1px solid var(--cor-borda-forte);
   border-radius: var(--raio);
+  transition: border-color var(--transicao);
 }
 
-input:focus-visible,
-select:focus-visible,
-button:focus-visible,
-a:focus-visible {
-  outline: 3px solid var(--cor-primaria);
-  outline-offset: 2px;
+textarea {
+  padding: var(--esp-3) var(--esp-4);
 }
 
-/* ---------- Botões ---------- */
-
-button {
-  min-height: var(--alvo-toque);
-  padding: 0.55rem 1rem;
-  font: inherit;
-  font-weight: 600;
-  border-radius: var(--raio);
-  border: 1px solid transparent;
-  background: var(--cor-primaria);
-  color: #fff;
-  cursor: pointer;
+input:hover,
+select:hover {
+  border-color: var(--cor-texto-suave);
 }
 
-button:hover:not(:disabled) {
-  background: var(--cor-primaria-escura);
-}
-
-button:disabled {
-  opacity: 0.55;
+input:disabled,
+select:disabled {
+  background: var(--cor-superficie-alt);
+  color: var(--cor-texto-suave);
   cursor: not-allowed;
 }
 
-button.secundario {
+/* Campo de busca em pílula: o gesto de entrada do aplicativo. */
+.busca {
+  position: relative;
+  display: block;
+  margin-bottom: var(--esp-3);
+}
+
+.busca input {
+  padding-left: var(--esp-10);
+  border-radius: var(--raio-pilula);
+  background: var(--cor-superficie-alt);
+  border-color: transparent;
+}
+
+.busca input:focus-visible {
   background: var(--cor-superficie);
-  color: var(--cor-primaria);
-  border-color: var(--cor-borda);
 }
 
-button.perigo {
-  background: var(--cor-superficie);
-  color: var(--cor-erro);
-  border-color: var(--cor-borda);
-}
-
-button.largura-total {
-  width: 100%;
-}
-
-button.discreto {
-  background: none;
+.busca__icone {
+  position: absolute;
+  left: var(--esp-4);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
   color: var(--cor-texto-suave);
-  border: none;
-  padding: 0.35rem 0.5rem;
-  font-weight: 500;
+  pointer-events: none;
 }
 
-/* ---------- Utilitários de layout ---------- */
+/* Contador de quantidade: menos digitação que um campo numérico no celular. */
+.passo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--esp-1);
+  background: var(--cor-superficie-alt);
+  border-radius: var(--raio-pilula);
+  padding: var(--esp-1);
+}
+
+.passo button {
+  width: var(--alvo-toque);
+  height: var(--alvo-toque);
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+  border: none;
+  background: var(--cor-superficie);
+  color: var(--cor-marca-forte);
+  font-size: var(--fonte-media);
+  font-weight: var(--peso-forte);
+  cursor: pointer;
+  box-shadow: var(--sombra-baixa);
+}
+
+.passo button:disabled {
+  color: var(--cor-texto-suave);
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.passo input {
+  width: 3.5rem;
+  min-height: 0;
+  padding: 0;
+  text-align: center;
+  background: none;
+  border: none;
+  font-weight: var(--peso-forte);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ==========================================================================
+   9. Chips
+   ========================================================================== */
+
+.chips {
+  display: flex;
+  gap: var(--esp-2);
+  overflow-x: auto;
+  padding-bottom: var(--esp-2);
+  margin-bottom: var(--esp-2);
+  scrollbar-width: none;
+}
+
+.chips::-webkit-scrollbar {
+  display: none;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--esp-1);
+  min-height: var(--alvo-toque);
+  padding: 0 var(--esp-4);
+  border-radius: var(--raio-pilula);
+  border: 1px solid var(--cor-borda-forte);
+  background: var(--cor-superficie);
+  color: var(--cor-texto);
+  font-size: var(--fonte-pequena);
+  font-weight: var(--peso-medio);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chip--ativo {
+  background: var(--cor-marca-tenue);
+  border-color: var(--cor-marca);
+  color: var(--cor-marca-forte);
+  font-weight: var(--peso-forte);
+}
+
+/* ==========================================================================
+   10. Selos e avatares
+   ========================================================================== */
+
+.selo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--esp-1);
+  padding: 2px var(--esp-2);
+  border-radius: var(--raio-pilula);
+  font-size: var(--fonte-mini);
+  font-weight: var(--peso-forte);
+  background: var(--cor-superficie-alt);
+  color: var(--cor-texto-suave);
+  white-space: nowrap;
+}
+
+.selo--marca {
+  background: var(--cor-marca-tenue);
+  color: var(--cor-marca-forte);
+}
+
+.selo--destaque {
+  background: var(--cor-destaque-tenue);
+  color: var(--cor-destaque-texto);
+}
+
+.selo--erro {
+  background: var(--cor-erro-tenue);
+  color: var(--cor-erro-texto);
+}
+
+/* Iniciais no lugar de logotipo: nenhum estabelecimento real é representado. */
+.avatar {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--raio);
+  display: grid;
+  place-items: center;
+  background: var(--cor-marca-tenue);
+  color: var(--cor-marca-forte);
+  font-weight: var(--peso-extra);
+  font-size: var(--fonte-base);
+  letter-spacing: -0.02em;
+}
+
+/* ==========================================================================
+   11. Mensagens
+   ========================================================================== */
+
+.aviso {
+  display: flex;
+  gap: var(--esp-2);
+  padding: var(--esp-3) var(--esp-4);
+  border-radius: var(--raio);
+  border: 1px solid var(--cor-borda);
+  background: var(--cor-superficie);
+  margin-bottom: var(--esp-3);
+  font-size: var(--fonte-pequena);
+}
+
+.aviso--erro {
+  background: var(--cor-erro-tenue);
+  border-color: var(--cor-erro-borda);
+  color: var(--cor-erro-texto);
+}
+
+.aviso--atencao {
+  background: var(--cor-destaque-tenue);
+  border-color: var(--cor-destaque-borda);
+  color: var(--cor-destaque-texto);
+}
+
+.aviso--sucesso {
+  background: var(--cor-marca-tenue);
+  border-color: var(--cor-marca-borda);
+  color: var(--cor-marca-forte);
+}
+
+/* ==========================================================================
+   12. Esqueletos de carregamento
+   ========================================================================== */
+
+/*
+ * Esqueleto no lugar de girador: mostra a forma do que está por vir, então a tela não
+ * salta quando o conteúdo chega e a espera parece menor do que é.
+ */
+.esqueleto {
+  border-radius: var(--raio-pequeno);
+  background: linear-gradient(
+    90deg,
+    var(--cor-superficie-alt) 25%,
+    var(--cor-borda) 37%,
+    var(--cor-superficie-alt) 63%
+  );
+  background-size: 400% 100%;
+  animation: esqueleto-brilho 1.4s ease infinite;
+}
+
+.esqueleto--linha {
+  height: 0.75rem;
+  margin-bottom: var(--esp-2);
+}
+
+.esqueleto--titulo {
+  height: 1rem;
+  width: 45%;
+  margin-bottom: var(--esp-3);
+}
+
+.esqueleto--curta {
+  width: 65%;
+}
+
+@keyframes esqueleto-brilho {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
+}
+
+/* ==========================================================================
+   13. Tipografia utilitária
+   ========================================================================== */
+
+.suave {
+  color: var(--cor-texto-suave);
+  font-size: var(--fonte-pequena);
+}
+
+.mini {
+  font-size: var(--fonte-mini);
+  color: var(--cor-texto-suave);
+}
+
+.valor {
+  font-weight: var(--peso-forte);
+  font-variant-numeric: tabular-nums;
+}
+
+.valor--grande {
+  font-size: var(--fonte-valor);
+  font-weight: var(--peso-extra);
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.rotulo {
+  font-size: var(--fonte-pequena);
+  font-weight: var(--peso-medio);
+  color: var(--cor-texto-suave);
+}
+
+/* ==========================================================================
+   14. Layout utilitário
+   ========================================================================== */
+
+.pilha {
+  display: flex;
+  flex-direction: column;
+  gap: var(--esp-2);
+}
 
 .linha {
   display: flex;
-  gap: 0.5rem;
+  gap: var(--esp-2);
   align-items: center;
 }
 
 .linha-entre {
   display: flex;
-  gap: 0.5rem;
+  gap: var(--esp-3);
   align-items: center;
   justify-content: space-between;
 }
 
-.empilhado {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+.crescer {
+  flex: 1;
+  min-width: 0;
 }
 
-.suave {
-  color: var(--cor-texto-suave);
-  font-size: 0.9rem;
+.oculto-visual {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
-.destaque {
-  font-size: 1.5rem;
-  font-weight: 700;
-}
-
-.etiqueta {
-  display: inline-block;
-  font-size: 0.75rem;
-  font-weight: 600;
-  padding: 0.15rem 0.5rem;
-  border-radius: 999px;
-  background: var(--cor-fundo);
-  border: 1px solid var(--cor-borda);
-  color: var(--cor-texto-suave);
-}
-
-/* ---------- Mensagens ---------- */
-
-.aviso {
-  padding: 0.75rem;
-  border-radius: var(--raio);
-  border: 1px solid var(--cor-borda);
-  margin-bottom: 0.75rem;
-  font-size: 0.95rem;
-}
-
-.aviso.erro {
-  background: var(--cor-erro-fundo);
-  border-color: #f3c4c0;
-  color: var(--cor-erro);
-}
-
-.aviso.atencao {
-  background: var(--cor-alerta-fundo);
-  border-color: #ecd9a6;
-  color: var(--cor-alerta);
-}
-
-.aviso.sucesso {
-  background: var(--cor-sucesso-fundo);
-  border-color: #bfe0cb;
-  color: var(--cor-sucesso);
-}
-
-/* ---------- Tabelas: nunca rolam a página na horizontal ---------- */
+/* ==========================================================================
+   15. Tabelas
+   ========================================================================== */
 
 .rolagem-horizontal {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.95rem;
+  font-size: var(--fonte-pequena);
 }
 
 th,
 td {
   text-align: left;
-  padding: 0.5rem 0.4rem;
+  padding: var(--esp-2) var(--esp-1);
   border-bottom: 1px solid var(--cor-borda);
 }
 
 th {
-  font-size: 0.8rem;
+  font-size: var(--fonte-mini);
+  font-weight: var(--peso-medio);
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
   color: var(--cor-texto-suave);
+}
+
+tfoot th,
+tfoot td {
+  border-bottom: none;
+  font-weight: var(--peso-forte);
 }
 
 td.numero,
 th.numero {
   text-align: right;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 @media (min-width: 640px) {
-  .conteudo {
-    padding: 1.5rem 1.5rem 4rem;
-  }
-
-  h1 {
-    font-size: 1.7rem;
+  :root {
+    --fonte-titulo: 1.75rem;
+    --fonte-valor: 2.25rem;
   }
 }

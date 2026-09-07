@@ -11,6 +11,7 @@ import {
   renomearLista as renomearListaApi
 } from '@/api/listas'
 import { mensagemAmigavel } from '@/api/clienteHttp'
+import { useRecomendacaoStore } from '@/stores/recomendacao'
 import type { EntradaItemLista, ListaDetalhada, ListaResumo } from '@/api/tipos'
 
 export interface RetornoListasStore {
@@ -111,9 +112,19 @@ export const useListasStore = defineStore('listas', (): RetornoListasStore => {
     }
   }
 
+  /**
+   * Mexer nos itens invalida qualquer roteiro já calculado para a lista: ele foi resolvido
+   * sobre outra cesta. Sem isso a tela de recomendação exibiria um resultado que não
+   * corresponde mais ao que o usuário quer comprar.
+   */
+  function descartarRecomendacoes(): void {
+    useRecomendacaoStore().invalidarResultados()
+  }
+
   async function adicionarItem(listaId: number, item: EntradaItemLista): Promise<boolean> {
     const resultado = await comSalvamento(() => adicionarItemApi(listaId, item))
     if (!resultado) return false
+    descartarRecomendacoes()
     await recarregarItens(listaId)
     return true
   }
@@ -125,6 +136,7 @@ export const useListasStore = defineStore('listas', (): RetornoListasStore => {
   ): Promise<boolean> {
     const resultado = await comSalvamento(() => atualizarItemApi(listaId, itemId, item))
     if (!resultado) return false
+    descartarRecomendacoes()
     await recarregarItens(listaId)
     return true
   }
@@ -135,6 +147,7 @@ export const useListasStore = defineStore('listas', (): RetornoListasStore => {
       return true
     })
     if (!resultado) return false
+    descartarRecomendacoes()
     if (listaAtual.value?.id === listaId) {
       listaAtual.value = {
         ...listaAtual.value,

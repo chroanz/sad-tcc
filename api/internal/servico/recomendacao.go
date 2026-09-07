@@ -100,6 +100,8 @@ type RecomendacaoGerada struct {
 	CustoItensCentavos          int64                   `json:"custo_itens_centavos"`
 	CustoLogisticoCentavos      int64                   `json:"custo_logistico_centavos"`
 	CustoTotalCentavos          int64                   `json:"custo_total_centavos"`
+	CustoPorVisitaCentavos      int64                   `json:"custo_por_visita_centavos"`
+	CustoPorKmCentavos          int64                   `json:"custo_por_km_centavos"`
 	QuantidadeMercadosVisitados int                     `json:"quantidade_mercados_visitados"`
 	DistanciaTotalKm            float64                 `json:"distancia_total_km"`
 	Rota                        []otimizador.ParadaRota `json:"rota"`
@@ -387,6 +389,8 @@ func montarResposta(
 		CustoItensCentavos:          resposta.CustoItensCentavos,
 		CustoLogisticoCentavos:      resposta.CustoLogisticoCentavos,
 		CustoTotalCentavos:          resposta.CustoTotalCentavos,
+		CustoPorVisitaCentavos:      resposta.CustoPorVisitaCentavos,
+		CustoPorKmCentavos:          resposta.CustoPorKmCentavos,
 		QuantidadeMercadosVisitados: resposta.QuantidadeMercadosVisitados,
 		DistanciaTotalKm:            resposta.DistanciaTotalKm,
 		Rota:                        rota,
