@@ -1,0 +1,70 @@
+# Ambiente completo da PoC: banco, otimizador, API e PWA.
+# Uso comum durante o desenvolvimento: subir apenas o banco (docker compose up -d postgres)
+# e rodar API/otimizador/PWA localmente.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: tcc_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USUARIO:-tcc}
+      POSTGRES_PASSWORD: ${POSTGRES_SENHA:-tcc}
+      POSTGRES_DB: ${POSTGRES_BANCO:-sad_compras}
+    ports:
+      - "${POSTGRES_PORTA:-5432}:5432"
+    volumes:
+      - dados_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USUARIO:-tcc} -d ${POSTGRES_BANCO:-sad_compras}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  modelo:
+    build: ./modelo
+    container_name: tcc_modelo
+    environment:
+      MODELO_PORTA: 8001
+      MODELO_LIMITE_TEMPO_SEGUNDOS: ${MODELO_LIMITE_TEMPO_SEGUNDOS:-10}
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/saude')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  api:
+    build: ./api
+    container_name: tcc_api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      modelo:
+        condition: service_healthy
+    environment:
+      API_PORTA: 8080
+      BANCO_URL: postgres://${POSTGRES_USUARIO:-tcc}:${POSTGRES_SENHA:-tcc}@postgres:5432/${POSTGRES_BANCO:-sad_compras}?sslmode=disable
+      OTIMIZADOR_URL: http://modelo:8001
+      OTIMIZADOR_TIMEOUT_SEGUNDOS: ${OTIMIZADOR_TIMEOUT_SEGUNDOS:-30}
+      JWT_SEGREDO: ${JWT_SEGREDO:-segredo-de-desenvolvimento-trocar-em-producao}
+      JWT_HORAS_VALIDADE: ${JWT_HORAS_VALIDADE:-24}
+      ORIGEM_PADRAO_LATITUDE: ${ORIGEM_PADRAO_LATITUDE:--7.213100}
+      ORIGEM_PADRAO_LONGITUDE: ${ORIGEM_PADRAO_LONGITUDE:--39.315300}
+      APLICAR_MIGRACOES: "true"
+    ports:
+      - "8080:8080"
+
+  pwa:
+    build: ./pwa
+    container_name: tcc_pwa
+    depends_on:
+      - api
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8080/api/v1}
+    ports:
+      - "5173:5173"
+
+volumes:
+  dados_postgres:

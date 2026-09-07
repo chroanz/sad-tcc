@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Sacola de compras">
+  <rect width="512" height="512" rx="113" fill="#1f7a4d" />
+  <path
+    d="M190 215v-14a66 66 0 0 1 132 0v14"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="31"
+    stroke-linecap="round"
+  />
+  <rect x="123" y="205" width="266" height="215" rx="36" fill="#ffffff" />
+  <rect x="169" y="271" width="174" height="23" rx="11" fill="#1f7a4d" />
+  <rect x="169" y="323" width="138" height="23" rx="11" fill="#1f7a4d" />
+</svg>

@@ -1,0 +1,273 @@
+/*
+ * Estilo base do PWA. Mobile-first: o layout é de coluna única e só ganha respiro em
+ * telas maiores. Alvos de toque com no mínimo 44px, conforme o requisito de usabilidade.
+ */
+
+:root {
+  --cor-fundo: #f6f7f9;
+  --cor-superficie: #ffffff;
+  --cor-borda: #dfe3e8;
+  --cor-texto: #1c2430;
+  --cor-texto-suave: #5a6675;
+  --cor-primaria: #2f5d8a;
+  --cor-primaria-escura: #244a70;
+  --cor-sucesso: #2f7a4d;
+  --cor-sucesso-fundo: #eaf5ee;
+  --cor-alerta: #8a5a00;
+  --cor-alerta-fundo: #fdf6e3;
+  --cor-erro: #b3261e;
+  --cor-erro-fundo: #fdecea;
+  --raio: 10px;
+  --sombra: 0 1px 3px rgba(20, 30, 45, 0.08);
+  --alvo-toque: 44px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--cor-fundo);
+  color: var(--cor-texto);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0 0 0.5rem;
+  line-height: 1.25;
+}
+
+h1 {
+  font-size: 1.4rem;
+}
+
+h2 {
+  font-size: 1.15rem;
+}
+
+h3 {
+  font-size: 1rem;
+}
+
+p {
+  margin: 0 0 0.75rem;
+}
+
+a {
+  color: var(--cor-primaria);
+}
+
+.conteudo {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1rem 1rem 4rem;
+}
+
+.cartao {
+  background: var(--cor-superficie);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+  box-shadow: var(--sombra);
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+/* ---------- Formulários ---------- */
+
+.campo {
+  display: block;
+  margin-bottom: 0.85rem;
+}
+
+.campo > span {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--cor-texto-suave);
+  margin-bottom: 0.25rem;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  min-height: var(--alvo-toque);
+  padding: 0.5rem 0.65rem;
+  font: inherit;
+  color: inherit;
+  background: var(--cor-superficie);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+}
+
+input:focus-visible,
+select:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: 3px solid var(--cor-primaria);
+  outline-offset: 2px;
+}
+
+/* ---------- Botões ---------- */
+
+button {
+  min-height: var(--alvo-toque);
+  padding: 0.55rem 1rem;
+  font: inherit;
+  font-weight: 600;
+  border-radius: var(--raio);
+  border: 1px solid transparent;
+  background: var(--cor-primaria);
+  color: #fff;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: var(--cor-primaria-escura);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+button.secundario {
+  background: var(--cor-superficie);
+  color: var(--cor-primaria);
+  border-color: var(--cor-borda);
+}
+
+button.perigo {
+  background: var(--cor-superficie);
+  color: var(--cor-erro);
+  border-color: var(--cor-borda);
+}
+
+button.largura-total {
+  width: 100%;
+}
+
+button.discreto {
+  background: none;
+  color: var(--cor-texto-suave);
+  border: none;
+  padding: 0.35rem 0.5rem;
+  font-weight: 500;
+}
+
+/* ---------- Utilitários de layout ---------- */
+
+.linha {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.linha-entre {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.empilhado {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.suave {
+  color: var(--cor-texto-suave);
+  font-size: 0.9rem;
+}
+
+.destaque {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.etiqueta {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: var(--cor-fundo);
+  border: 1px solid var(--cor-borda);
+  color: var(--cor-texto-suave);
+}
+
+/* ---------- Mensagens ---------- */
+
+.aviso {
+  padding: 0.75rem;
+  border-radius: var(--raio);
+  border: 1px solid var(--cor-borda);
+  margin-bottom: 0.75rem;
+  font-size: 0.95rem;
+}
+
+.aviso.erro {
+  background: var(--cor-erro-fundo);
+  border-color: #f3c4c0;
+  color: var(--cor-erro);
+}
+
+.aviso.atencao {
+  background: var(--cor-alerta-fundo);
+  border-color: #ecd9a6;
+  color: var(--cor-alerta);
+}
+
+.aviso.sucesso {
+  background: var(--cor-sucesso-fundo);
+  border-color: #bfe0cb;
+  color: var(--cor-sucesso);
+}
+
+/* ---------- Tabelas: nunca rolam a página na horizontal ---------- */
+
+.rolagem-horizontal {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.5rem 0.4rem;
+  border-bottom: 1px solid var(--cor-borda);
+}
+
+th {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--cor-texto-suave);
+}
+
+td.numero,
+th.numero {
+  text-align: right;
+  white-space: nowrap;
+}
+
+@media (min-width: 640px) {
+  .conteudo {
+    padding: 1.5rem 1.5rem 4rem;
+  }
+
+  h1 {
+    font-size: 1.7rem;
+  }
+}
