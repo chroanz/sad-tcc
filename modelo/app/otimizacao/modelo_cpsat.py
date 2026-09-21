@@ -7,9 +7,20 @@ e o resolve com ``ortools.sat.python.cp_model``.
 Notação (detalhada em ``docs/formulacao-matematica.md``):
 
 * conjuntos: ``I`` itens da lista, ``J`` mercados, ``C ⊆ I × J`` pares candidatos;
-* variáveis: ``comprar[i][j]``, ``visitar[j]`` e ``nao_atendido[i]``, todas binárias;
+* variáveis: ``comprar[i][j]``, ``visitar[j]``, ``nao_atendido[i]`` e ``arco[a][b]``, todas
+  binárias;
 * objetivo: custo dos produtos mais o custo logístico ponderado, mais a penalidade dos
   itens não atendidos.
+
+O custo logístico não é mais a soma de idas e voltas independentes a cada mercado: os nós
+``{origem} ∪ J`` entram em uma restrição de circuito (``CpModel.AddCircuit``), que escolhe
+**junto com** a alocação dos itens quais mercados visitar e em que ordem, cobrando a
+distância real do trajeto sequencial em vez de uma cota superior. Mercados fora do circuito
+recebem um auto-laço (*self-loop*) amarrado a ``não visitar[j]``; a origem recebe um
+auto-laço amarrado a "nenhum mercado visitado". Isso substitui a antiga linearização de
+ida e volta, documentada como decisão de modelagem em versões anteriores deste módulo e
+que chegava a superestimar o custo logístico em mais de 60% (ver
+``docs/formulacao-matematica.md`` §7).
 
 Toda a aritmética do solver é **inteira**. Dinheiro entra em centavos, distância entra em
 metros e o peso de conveniência — único parâmetro em ponto flutuante — é escalado por
@@ -19,6 +30,7 @@ elimina qualquer divisão dentro do modelo e torna o valor ótimo exatamente rep
 
 from __future__ import annotations
 
+import itertools
 import math
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -40,8 +52,13 @@ from app.esquemas import (
     StatusOtimizacao,
 )
 from app.otimizacao.economia import ItemParaEconomia, calcular_economia
-from app.otimizacao.logistica import Ponto, distancia_ida_volta_metros, metros_para_km
-from app.otimizacao.rota import MercadoParaRota, RotaCalculada, ordenar_rota
+from app.otimizacao.logistica import (
+    Ponto,
+    distancia_ida_volta_metros,
+    matriz_de_distancias_metros,
+    metros_para_km,
+)
+from app.otimizacao.rota import RotaCalculada, extrair_rota
 
 ESCALA_PESO = 100
 """Fator de escala do ``peso_conveniencia``: o objetivo é medido em centésimos de centavo."""
@@ -86,11 +103,23 @@ class _ParCandidato:
 class _Instancia:
     """Dados derivados da requisição, já em aritmética inteira.
 
+    Os nós do circuito são indexados como ``matriz_metros``: o índice ``0`` é a origem, e o
+    índice ``k`` (``k >= 1``) é o ``k``-ésimo mercado de ``ordem_mercados``.
+
     Attributes:
         requisicao: payload original.
         ordem_mercados: ``mercado_id`` na ordem de declaração, usada para indexar.
-        metros_ida_volta: ``2 · d(origem, j)`` em metros inteiros, por mercado.
-        custo_logistico_centavos: custo de visitar um mercado isoladamente (visita + km).
+        indice_do_mercado: ``mercado_id -> índice do nó`` (inverso de ``ordem_mercados``).
+        metros_ida_volta: ``2 · d(origem, j)`` em metros inteiros, por mercado. Cota
+            superior da rota real (usada só para dimensionar a penalidade e o desempate,
+            nunca mais como o custo logístico efetivo).
+        custo_logistico_centavos: custo de visitar **apenas** aquele mercado, isoladamente
+            (visita + ida e volta). É exato para o baseline de mercado único da seção 10 de
+            ``docs/formulacao-matematica.md``, mas deixou de ser o custo logístico da
+            recomendação, que agora é o do circuito real.
+        matriz_metros: distâncias em metros entre todos os nós (origem + mercados).
+        custo_arco_centavos: custo em centavos de cada arco ``(a, b)`` do circuito,
+            ``round(custo_por_km · d(a, b) / 1000)``.
         pares: pares candidatos elegíveis.
         peso_escalado: ``round(peso_conveniencia · 100)``.
         penalidade_centavos: penalidade por item não atendido.
@@ -98,8 +127,11 @@ class _Instancia:
 
     requisicao: RequisicaoOtimizacao
     ordem_mercados: List[int] = field(default_factory=list)
+    indice_do_mercado: Dict[int, int] = field(default_factory=dict)
     metros_ida_volta: Dict[int, int] = field(default_factory=dict)
     custo_logistico_centavos: Dict[int, int] = field(default_factory=dict)
+    matriz_metros: List[List[int]] = field(default_factory=list)
+    custo_arco_centavos: Dict[Tuple[int, int], int] = field(default_factory=dict)
     pares: List[_ParCandidato] = field(default_factory=list)
     peso_escalado: int = 0
     penalidade_centavos: int = 1
@@ -114,6 +146,9 @@ class _ModeloConstruido:
         comprar: variável binária de cada par candidato, indexada por ``(item, mercado)``.
         visitar: variável binária de cada mercado.
         nao_atendido: variável binária de cada item.
+        arco: variável binária de cada arco ``(a, b)`` do circuito, ``a`` e ``b`` sendo
+            índices de nó (``0`` é a origem). Não inclui auto-laços: um mercado fora do
+            circuito não aparece com nenhum arco ativo, nem de entrada nem de saída.
         objetivo: variável inteira igual à função objetivo escalada.
         desempate: variável inteira da ordem lexicográfica usada na segunda fase.
     """
@@ -122,6 +157,7 @@ class _ModeloConstruido:
     comprar: Dict[Tuple[int, int], cp_model.IntVar]
     visitar: Dict[int, cp_model.IntVar]
     nao_atendido: List[cp_model.IntVar]
+    arco: Dict[Tuple[int, int], cp_model.IntVar]
     objetivo: cp_model.IntVar
     desempate: cp_model.IntVar
 
@@ -141,15 +177,30 @@ def _preparar_instancia(requisicao: RequisicaoOtimizacao) -> _Instancia:
     """
     instancia = _Instancia(requisicao=requisicao)
     origem = Ponto(requisicao.origem.latitude, requisicao.origem.longitude)
+    pontos = [origem]
 
     for mercado in requisicao.mercados:
-        metros = distancia_ida_volta_metros(origem, Ponto(mercado.latitude, mercado.longitude))
+        ponto_mercado = Ponto(mercado.latitude, mercado.longitude)
+        pontos.append(ponto_mercado)
+        metros = distancia_ida_volta_metros(origem, ponto_mercado)
+        instancia.indice_do_mercado[mercado.mercado_id] = len(pontos) - 1
         instancia.ordem_mercados.append(mercado.mercado_id)
         instancia.metros_ida_volta[mercado.mercado_id] = metros
         instancia.custo_logistico_centavos[mercado.mercado_id] = (
             requisicao.custo_por_visita_centavos
             + arredondar_meio_para_cima(requisicao.custo_por_km_centavos * metros / METROS_POR_KM)
         )
+
+    instancia.matriz_metros = matriz_de_distancias_metros(pontos)
+    quantidade_nos = len(pontos)
+    instancia.custo_arco_centavos = {
+        (a, b): arredondar_meio_para_cima(
+            requisicao.custo_por_km_centavos * instancia.matriz_metros[a][b] / METROS_POR_KM
+        )
+        for a in range(quantidade_nos)
+        for b in range(quantidade_nos)
+        if a != b
+    }
 
     for indice_item, item in enumerate(requisicao.itens):
         for candidato in item.candidatos:
@@ -203,14 +254,21 @@ def _construir_modelo(instancia: _Instancia) -> _ModeloConstruido:
     * ``comprar[i][j] ∈ {0,1}`` — criada **apenas** para pares candidatos, isto é, quando
       existe preço cadastrado e o estoque cobre a quantidade pedida;
     * ``visitar[j] ∈ {0,1}`` — o mercado ``j`` entra no roteiro;
-    * ``nao_atendido[i] ∈ {0,1}`` — o item ``i`` fica sem alocação.
+    * ``nao_atendido[i] ∈ {0,1}`` — o item ``i`` fica sem alocação;
+    * ``arco[a][b] ∈ {0,1}`` — o trajeto vai do nó ``a`` direto ao nó ``b`` (``0`` é a
+      origem; os demais nós são os mercados, na ordem de ``instancia.ordem_mercados``).
 
     Restrições:
 
     * atribuição exata: ``Σ_j comprar[i][j] + nao_atendido[i] = 1`` para todo item, o que
       proíbe dividir a quantidade de um item entre mercados (RN01) e dá a todo item um
       destino explícito;
-    * acoplamento: ``comprar[i][j] ≤ visitar[j]``, só se compra onde se visita (RN02).
+    * acoplamento: ``comprar[i][j] ≤ visitar[j]``, só se compra onde se visita (RN02);
+    * circuito: ``AddCircuit`` sobre os arcos, com um auto-laço por nó — ``visitar[j].Not()``
+      para cada mercado e ``algum_mercado_visitado.Not()`` para a origem. Um nó com o
+      auto-laço ativo fica fora do circuito; os demais formam uma única rota fechada. É essa
+      restrição, nativa do CP-SAT, que decide a ordem de visita **junto** com a alocação, em
+      vez de uma aproximação de ida e volta resolvida à parte.
 
     Args:
         instancia: dados derivados da requisição.
@@ -242,15 +300,38 @@ def _construir_modelo(instancia: _Instancia) -> _ModeloConstruido:
     for (_, mercado_id), variavel in comprar.items():
         modelo.Add(variavel <= visitar[mercado_id])
 
+    quantidade_nos = len(instancia.ordem_mercados) + 1
+    arco = {
+        (a, b): modelo.NewBoolVar(f"arco_{a}_{b}")
+        for a in range(quantidade_nos)
+        for b in range(quantidade_nos)
+        if a != b
+    }
+    algum_mercado_visitado = modelo.NewBoolVar("algum_mercado_visitado")
+    modelo.Add(sum(visitar.values()) >= 1).OnlyEnforceIf(algum_mercado_visitado)
+    modelo.Add(sum(visitar.values()) == 0).OnlyEnforceIf(algum_mercado_visitado.Not())
+
+    arcos_do_circuito: List[Tuple[int, int, cp_model.IntVar]] = [
+        (a, b, variavel) for (a, b), variavel in arco.items()
+    ]
+    arcos_do_circuito.append((0, 0, algum_mercado_visitado.Not()))
+    for indice_no, mercado_id in enumerate(instancia.ordem_mercados, start=1):
+        arcos_do_circuito.append((indice_no, indice_no, visitar[mercado_id].Not()))
+    modelo.AddCircuit(arcos_do_circuito)
+
     termo_itens = sum(
         par.custo_centavos * comprar[(par.indice_item, par.mercado_id)] for par in instancia.pares
     )
     termo_logistico = sum(
-        instancia.custo_logistico_centavos[mercado_id] * variavel
-        for mercado_id, variavel in visitar.items()
-    )
+        instancia.requisicao.custo_por_visita_centavos * variavel for variavel in visitar.values()
+    ) + sum(instancia.custo_arco_centavos[chave] * variavel for chave, variavel in arco.items())
     termo_penalidade = sum(nao_atendido)
 
+    # A distância real do circuito nunca excede a soma das idas e voltas independentes
+    # (desigualdade triangular: o circuito ótimo é no máximo 2x a MST, que por sua vez é no
+    # máximo a árvore em estrela pela origem). `custo_logistico_centavos` continua sendo,
+    # portanto, uma cota superior válida do custo logístico real — segue servindo para
+    # dimensionar `teto_objetivo` e a penalidade `M`, mesmo não sendo mais o termo cobrado.
     teto_objetivo = (
         ESCALA_PESO * sum(par.custo_centavos for par in instancia.pares)
         + instancia.peso_escalado * sum(instancia.custo_logistico_centavos.values())
@@ -269,20 +350,17 @@ def _construir_modelo(instancia: _Instancia) -> _ModeloConstruido:
     fator_lexicografico = metros_totais + 1
     teto_desempate = fator_lexicografico * len(visitar) + metros_totais + 1
     desempate = modelo.NewIntVar(0, teto_desempate, "desempate_lexicografico")
-    modelo.Add(
-        desempate
-        == fator_lexicografico * sum(visitar.values())
-        + sum(
-            instancia.metros_ida_volta[mercado_id] * variavel
-            for mercado_id, variavel in visitar.items()
-        )
+    distancia_real_metros = sum(
+        instancia.matriz_metros[a][b] * variavel for (a, b), variavel in arco.items()
     )
+    modelo.Add(desempate == fator_lexicografico * sum(visitar.values()) + distancia_real_metros)
 
     return _ModeloConstruido(
         modelo=modelo,
         comprar=comprar,
         visitar=visitar,
         nao_atendido=nao_atendido,
+        arco=arco,
         objetivo=objetivo,
         desempate=desempate,
     )
@@ -352,6 +430,20 @@ def _ler_solucao(
     return alocacao, visitados
 
 
+def _ler_proximo_no(solver: cp_model.CpSolver, construido: _ModeloConstruido) -> Dict[int, int]:
+    """Extrai o circuito resolvido como um mapa ``nó -> próximo nó``.
+
+    Args:
+        solver: solver com uma solução carregada.
+        construido: modelo correspondente àquele solver.
+
+    Returns:
+        Para cada nó com arco de saída ativo no circuito, o índice do próximo nó. A origem
+        (``0``) só aparece como chave quando algum mercado foi visitado.
+    """
+    return {a: b for (a, b), variavel in construido.arco.items() if solver.Value(variavel) == 1}
+
+
 def _motivo_do_item(item_index: int, instancia: _Instancia) -> MotivoNaoAtendido:
     """Classifica por que um item ficou sem alocação.
 
@@ -419,12 +511,21 @@ def _montar_compras(
     return compras
 
 
-def _montar_economia(alocacao: Dict[int, _ParCandidato], instancia: _Instancia) -> Economia:
+def _montar_economia(
+    alocacao: Dict[int, _ParCandidato],
+    instancia: _Instancia,
+    custo_logistico_recomendacao_real_centavos: int,
+) -> Economia:
     """Prepara os dados do baseline de mercado único e delega o cálculo.
 
     Args:
         alocacao: item → par candidato escolhido.
         instancia: instância em resolução.
+        custo_logistico_recomendacao_real_centavos: custo logístico real de toda a
+            recomendação (visita + circuito), o mesmo reportado em
+            ``custo_logistico_centavos``. Usado quando a comparação cobre exatamente os
+            mercados da recomendação inteira, para que a economia relatada nunca contradiga
+            o custo total já exibido ao usuário.
 
     Returns:
         O bloco ``economia`` do contrato.
@@ -443,30 +544,31 @@ def _montar_economia(alocacao: Dict[int, _ParCandidato], instancia: _Instancia) 
         for indice_item, par in sorted(alocacao.items())
     ]
     nomes = {mercado.mercado_id: mercado.nome for mercado in instancia.requisicao.mercados}
-    return calcular_economia(itens_para_economia, instancia.custo_logistico_centavos, nomes)
+    return calcular_economia(
+        itens_para_economia,
+        instancia.custo_logistico_centavos,
+        nomes,
+        custo_logistico_recomendacao_real_centavos,
+    )
 
 
-def _montar_rota(visitados: Sequence[int], instancia: _Instancia) -> RotaCalculada:
-    """Ordena os mercados visitados a partir da origem do usuário.
+def _montar_rota(proximo_no: Dict[int, int], instancia: _Instancia) -> RotaCalculada:
+    """Extrai a rota do circuito resolvido pelo CP-SAT, a partir da origem.
 
     Args:
-        visitados: ``mercado_id`` selecionados pelo modelo.
+        proximo_no: mapa ``nó -> próximo nó`` do circuito resolvido (ver
+            :func:`_ler_proximo_no`).
         instancia: instância em resolução.
 
     Returns:
         A rota calculada, com paradas e distância total real.
     """
-    por_id = {mercado.mercado_id: mercado for mercado in instancia.requisicao.mercados}
-    mercados = [
-        MercadoParaRota(
-            mercado_id=mercado_id,
-            nome=por_id[mercado_id].nome,
-            ponto=Ponto(por_id[mercado_id].latitude, por_id[mercado_id].longitude),
-        )
-        for mercado_id in visitados
-    ]
-    origem = Ponto(instancia.requisicao.origem.latitude, instancia.requisicao.origem.longitude)
-    return ordenar_rota(origem, mercados)
+    nomes = {mercado.mercado_id: mercado.nome for mercado in instancia.requisicao.mercados}
+    mercados_por_indice = {
+        indice: (mercado_id, nomes[mercado_id])
+        for indice, mercado_id in enumerate(instancia.ordem_mercados, start=1)
+    }
+    return extrair_rota(proximo_no, instancia.matriz_metros, mercados_por_indice)
 
 
 def resolver_alocacao_de_compras(requisicao: RequisicaoOtimizacao) -> RespostaOtimizacao:
@@ -476,10 +578,11 @@ def resolver_alocacao_de_compras(requisicao: RequisicaoOtimizacao) -> RespostaOt
 
     1. minimiza a função objetivo escalarizada e guarda o valor ótimo ``Z*``;
     2. fixa ``objetivo == Z*`` e minimiza, em ordem lexicográfica, o número de mercados
-       visitados e depois a distância linearizada total. A ordem lexicográfica é obtida
-       por um único escalar ``(Σ_j metros_j + 1) · Σ_j visitar[j] + Σ_j metros_j ·
-       visitar[j]``: como a segunda parcela é sempre menor que o fator multiplicativo, o
-       primeiro critério domina o segundo sem ambiguidade.
+       visitados e depois a distância real do circuito. A ordem lexicográfica é obtida por
+       um único escalar ``(Σ_j metros_ida_volta_j + 1) · Σ_j visitar[j] + distância real``:
+       como a segunda parcela nunca excede a soma de idas e voltas independentes (cota
+       superior da rota real, por desigualdade triangular) e portanto é sempre menor que o
+       fator multiplicativo, o primeiro critério domina o segundo sem ambiguidade.
 
     ``valor_objetivo_centavos`` reporta sempre o ``Z*`` da primeira fase, descontadas as
     penalidades de não atendimento — que são artefato de modelagem, não gasto do usuário.
@@ -518,6 +621,7 @@ def resolver_alocacao_de_compras(requisicao: RequisicaoOtimizacao) -> RespostaOt
 
     valor_otimo_escalado = solver_fase_um.Value(primeira_fase.objetivo)
     alocacao, visitados = _ler_solucao(solver_fase_um, primeira_fase, instancia)
+    proximo_no = _ler_proximo_no(solver_fase_um, primeira_fase)
 
     segunda_fase = _construir_modelo(instancia)
     segunda_fase.modelo.Add(segunda_fase.objetivo == valor_otimo_escalado)
@@ -528,6 +632,7 @@ def resolver_alocacao_de_compras(requisicao: RequisicaoOtimizacao) -> RespostaOt
 
     if status_fase_dois in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         alocacao, visitados = _ler_solucao(solver_fase_dois, segunda_fase, instancia)
+        proximo_no = _ler_proximo_no(solver_fase_dois, segunda_fase)
 
     return _montar_resposta(
         instancia=instancia,
@@ -536,6 +641,7 @@ def resolver_alocacao_de_compras(requisicao: RequisicaoOtimizacao) -> RespostaOt
         valor_otimo_escalado=valor_otimo_escalado,
         alocacao=alocacao,
         visitados=visitados,
+        proximo_no=proximo_no,
         tempo_total=tempo_total,
         quantidade_variaveis=quantidade_variaveis,
         quantidade_restricoes=quantidade_restricoes,
@@ -585,7 +691,7 @@ def _resposta_sem_solucao(
         rota=[],
         compras_por_mercado=[],
         itens_nao_atendidos=nao_atendidos,
-        economia=calcular_economia([], instancia.custo_logistico_centavos, {}),
+        economia=calcular_economia([], instancia.custo_logistico_centavos, {}, 0),
         diagnostico=Diagnostico(
             status_solver=status_solver,
             tempo_solver_segundos=round(tempo_total, 6),
@@ -602,6 +708,7 @@ def _montar_resposta(
     valor_otimo_escalado: int,
     alocacao: Dict[int, _ParCandidato],
     visitados: List[int],
+    proximo_no: Dict[int, int],
     tempo_total: float,
     quantidade_variaveis: int,
     quantidade_restricoes: int,
@@ -609,8 +716,9 @@ def _montar_resposta(
     """Traduz a solução do solver na resposta do contrato.
 
     ``custo_logistico_centavos`` é reportado **sem** o peso, como manda o contrato: ele é o
-    que o usuário de fato despende com deslocamento. O peso aparece apenas em
-    ``valor_objetivo_centavos``.
+    que o usuário de fato despende com deslocamento — agora o custo do circuito real
+    (visita por mercado mais a distância do trajeto sequencial), não mais a soma de idas e
+    voltas independentes. O peso aparece apenas em ``valor_objetivo_centavos``.
 
     Args:
         instancia: instância em resolução.
@@ -619,6 +727,7 @@ def _montar_resposta(
         valor_otimo_escalado: ``Z*`` na unidade escalada (centésimo de centavo).
         alocacao: item → par candidato escolhido.
         visitados: mercados com ``visitar[j] = 1``.
+        proximo_no: circuito resolvido, como mapa ``nó -> próximo nó``.
         tempo_total: tempo acumulado das duas fases.
         quantidade_variaveis: variáveis do modelo da primeira fase.
         quantidade_restricoes: restrições do modelo da primeira fase.
@@ -627,8 +736,8 @@ def _montar_resposta(
         A resposta completa de ``POST /otimizar``.
     """
     custo_itens = sum(par.custo_centavos for par in alocacao.values())
-    custo_logistico = sum(
-        instancia.custo_logistico_centavos[mercado_id] for mercado_id in visitados
+    custo_logistico = instancia.requisicao.custo_por_visita_centavos * len(visitados) + sum(
+        instancia.custo_arco_centavos[arco] for arco in proximo_no.items()
     )
     quantidade_nao_atendidos = len(instancia.requisicao.itens) - len(alocacao)
     objetivo_sem_penalidade = valor_otimo_escalado - (
@@ -636,7 +745,7 @@ def _montar_resposta(
     )
     valor_objetivo = arredondar_meio_para_cima(objetivo_sem_penalidade / ESCALA_PESO)
 
-    rota_calculada = _montar_rota(visitados, instancia)
+    rota_calculada = _montar_rota(proximo_no, instancia)
     paradas = [
         ParadaRota(
             ordem=posicao,
@@ -672,7 +781,7 @@ def _montar_resposta(
         rota=paradas,
         compras_por_mercado=_montar_compras(alocacao, instancia, ordem_de_visita),
         itens_nao_atendidos=nao_atendidos,
-        economia=_montar_economia(alocacao, instancia),
+        economia=_montar_economia(alocacao, instancia, custo_logistico),
         diagnostico=Diagnostico(
             status_solver=status_solver,
             tempo_solver_segundos=round(tempo_total, 6),
@@ -682,6 +791,39 @@ def _montar_resposta(
     )
 
 
+def _custo_logistico_real_centavos(visitados: Sequence[int], instancia: _Instancia) -> int:
+    """Custo logístico real (visita + rota mínima) de um conjunto de mercados visitados.
+
+    Existe só para :func:`calcular_custo_de_uma_alocacao`, que avalia uma alocação sem
+    passar pelo solver e por isso precisa resolver, à parte, o pequeno TSP que o
+    ``AddCircuit`` do modelo resolveria. O teto da PoC é 8 mercados (``8! = 40320``
+    permutações), custo desprezível — não é o branch-and-bound manual que o `CLAUDE.md`
+    proíbe, é só uma verificação de força bruta usada em teste/inspeção.
+
+    Args:
+        visitados: ``mercado_id`` incluídos na rota.
+        instancia: instância em resolução, com a matriz de distâncias já calculada.
+
+    Returns:
+        ``custo_por_visita · |visitados| + custo_por_km · distância mínima do circuito``.
+    """
+    if not visitados:
+        return 0
+    indices = [instancia.indice_do_mercado[mercado_id] for mercado_id in visitados]
+    melhor_arcos: Optional[List[Tuple[int, int]]] = None
+    melhor_distancia: Optional[int] = None
+    for permutacao in itertools.permutations(indices):
+        sequencia = (0, *permutacao, 0)
+        arcos_da_sequencia = list(zip(sequencia, sequencia[1:], strict=False))
+        distancia = sum(instancia.matriz_metros[a][b] for a, b in arcos_da_sequencia)
+        if melhor_distancia is None or distancia < melhor_distancia:
+            melhor_distancia = distancia
+            melhor_arcos = arcos_da_sequencia
+
+    custo_arcos = sum(instancia.custo_arco_centavos[par] for par in melhor_arcos)
+    return instancia.requisicao.custo_por_visita_centavos * len(visitados) + custo_arcos
+
+
 def calcular_custo_de_uma_alocacao(
     requisicao: RequisicaoOtimizacao, alocacao: Dict[int, Optional[int]]
 ) -> int:
@@ -689,7 +831,8 @@ def calcular_custo_de_uma_alocacao(
 
     Existe para os testes e para a inspeção manual do modelo: dada uma atribuição
     item → mercado (ou ``None`` para item não atendido), devolve o valor exato do objetivo
-    na mesma unidade usada pelo solver.
+    na mesma unidade usada pelo solver — incluindo o custo do circuito mínimo entre os
+    mercados usados, não mais a soma de idas e voltas independentes.
 
     Args:
         requisicao: payload da instância.
@@ -718,7 +861,7 @@ def calcular_custo_de_uma_alocacao(
         total_itens += custos[chave]
         visitados.add(mercado_id)
 
-    total_logistico = sum(instancia.custo_logistico_centavos[j] for j in visitados)
+    total_logistico = _custo_logistico_real_centavos(sorted(visitados), instancia)
     return (
         ESCALA_PESO * total_itens
         + instancia.peso_escalado * total_logistico

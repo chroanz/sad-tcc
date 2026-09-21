@@ -6,7 +6,7 @@ que a formulação obriga a valer.
 """
 
 from app.esquemas import MotivoNaoAtendido, StatusOtimizacao
-from app.otimizacao.logistica import Ponto, distancia_ida_volta_metros
+from app.otimizacao.logistica import Ponto, distancia_haversine_metros, distancia_ida_volta_metros
 from app.otimizacao.modelo_cpsat import (
     arredondar_meio_para_cima,
     resolver_alocacao_de_compras,
@@ -73,6 +73,41 @@ def test_visita_o_segundo_mercado_quando_a_economia_compensa():
 
     assert resposta.quantidade_mercados_visitados == 2
     assert mercado_de_cada_item(resposta) == {1: 1, 2: 5}
+
+
+def test_visitar_dois_mercados_custa_menos_que_duas_idas_e_voltas_independentes():
+    """A correção do modelo: o usuário vai de um mercado ao outro, não volta à origem entre eles.
+
+    Antes desta correção, o custo logístico de visitar dois mercados era exatamente
+    ``custo_logistico_do_mercado(1) + custo_logistico_do_mercado(5)`` — a soma de duas idas
+    e voltas independentes. Agora é o custo do circuito real origem → um mercado → o outro →
+    origem, que a desigualdade triangular garante ser sempre menor ou igual, e estritamente
+    menor sempre que os dois mercados não estão alinhados com a origem.
+    """
+    requisicao = montar_requisicao(
+        itens=[montar_item(1, [(1, 1000)]), montar_item(2, [(5, 1000)])],
+        mercados_ids=[1, 5],
+        peso_conveniencia=0.0,
+    )
+    resposta = resolver_alocacao_de_compras(requisicao)
+
+    assert resposta.quantidade_mercados_visitados == 2
+    soma_das_idas_e_voltas_independentes = custo_logistico_do_mercado(
+        1
+    ) + custo_logistico_do_mercado(5)
+    assert resposta.custo_logistico_centavos < soma_das_idas_e_voltas_independentes
+
+    origem = Ponto(CENTRO_JUAZEIRO["latitude"], CENTRO_JUAZEIRO["longitude"])
+    _, latitude_1, longitude_1 = COORDENADAS_MERCADOS[1]
+    _, latitude_5, longitude_5 = COORDENADAS_MERCADOS[5]
+    ponto_1 = Ponto(latitude_1, longitude_1)
+    ponto_5 = Ponto(latitude_5, longitude_5)
+    distancia_real_circuito_km = (
+        distancia_haversine_metros(origem, ponto_1)
+        + distancia_haversine_metros(ponto_1, ponto_5)
+        + distancia_haversine_metros(ponto_5, origem)
+    ) / 1000.0
+    assert resposta.distancia_total_km == round(distancia_real_circuito_km, 3)
 
 
 def test_perfil_economico_ignora_a_logistica():

@@ -91,22 +91,33 @@ O núcleo do sistema é um modelo de Programação Inteira Mista multiobjetivo:
 - Variáveis binárias `u[i]` = item `i` fica **sem atendimento**, com penalidade alta. É ela
   que impede o modelo de ficar inviável quando algum item não tem oferta em mercado nenhum:
   o solver sempre devolve uma recomendação para os demais itens e reporta o que faltou.
+- Variáveis binárias `arco[a][b]` = a rota vai direto do nó `a` ao nó `b`, para
+  `a, b ∈ {origem} ∪ mercados`, `a != b`. Ligadas a `y[j]` por uma restrição de **circuito**
+  nativa do CP-SAT (`AddCircuit`): cada mercado fora da rota recebe um auto-laço amarrado a
+  `not y[j]`, e a origem recebe um auto-laço amarrado a "nenhum mercado visitado". Não há
+  eliminação de subciclo escrita à mão — é o próprio `AddCircuit` que garante um único
+  circuito fechado pelos nós incluídos.
 - Restrições: atribuição exata `Σ_j x[i][j] + u[i] = 1` (a quantidade de um item nunca é
-  dividida entre mercados); `x[i][j] <= y[j]` (só compra onde visita)
+  dividida entre mercados); `x[i][j] <= y[j]` (só compra onde visita); o circuito acima
 - Objetivo (escalarização por soma ponderada, parametrizável pelo usuário):
 
-  `min  custo_total(x)  +  peso_conveniencia * custo_logistico(y)  +  M * Σ_i u[i]`
+  `min  custo_total(x)  +  peso_conveniencia * custo_logistico(y, arco)  +  M * Σ_i u[i]`
 
-  onde `custo_logistico(y) = Σ_j y[j] * (custo_por_visita + custo_por_km * 2 * d(origem, j))`
-  combina o número de mercados visitados com a **distância haversine linearizada** de ida e
-  volta entre a origem e cada mercado. A linearização (ida e volta independente, em vez da
-  rota sequencial) mantém o modelo linear; a rota real é ordenada **depois** do solve e
-  apenas exibida. Evoluir para roteirização de verdade exigiria o módulo de Routing do
-  OR-Tools e é trabalho futuro.
+  onde `custo_logistico(y, arco) = Σ_j y[j] * custo_por_visita + Σ_(a,b) arco[a][b] * custo_por_km * d(a, b)`
+  combina o custo fixo de cada mercado visitado com a distância **real** do circuito de
+  visita — não mais uma ida e volta independente por mercado. Essa é uma correção sobre a
+  formulação original do projeto: a aproximação por ida e volta linearizada chegava a
+  superestimar o custo logístico em mais de 60% em instâncias com vários mercados,
+  penalizando sistematicamente o perfil econômico (medição e explicação completas em
+  `modelo/docs/formulacao-matematica.md` §7). A seleção de mercados e a ordem de visita são
+  decididas **juntas**, dentro do mesmo solve, pelo `AddCircuit` — não há mais uma segunda
+  etapa de roteirização depois do solve, nem é necessário o módulo de Routing do OR-Tools:
+  o próprio CP-SAT resolve essa restrição nativamente.
 
   `M` não é um número grande arbitrário: é a maior economia concebível ao abandonar um item
-  (soma de todos os custos candidatos mais toda a parcela logística ponderada) somada a 1,
-  o que garante que nenhuma solução deixe de atender um item atendível.
+  (soma de todos os custos candidatos mais toda a parcela logística ponderada, calculada
+  pela cota superior de ida e volta — ainda válida como teto mesmo não sendo mais o custo
+  cobrado) somada a 1, o que garante que nenhuma solução deixe de atender um item atendível.
 
 - Perfis fixos de `peso_conveniencia`: `economico` = 0.0, `equilibrado` = 1.0,
   `conveniente` = 3.0. A API também aceita um peso numérico livre, para os experimentos da
@@ -116,10 +127,11 @@ O núcleo do sistema é um modelo de Programação Inteira Mista multiobjetivo:
 - **Desempate determinístico em duas fases**: com `peso_conveniencia = 0` existem várias
   soluções de custo idêntico. A fase 1 minimiza o objetivo e guarda `Z*`; a fase 2 fixa
   `objetivo == Z*` e minimiza, em ordem lexicográfica, o número de mercados e depois a
-  distância. Sem isso a validação da Fase 4 acusaria falsas divergências.
-- **Não implemente um branch-and-bound manual.** Use `ortools.sat.python.cp_model`
-  (CP-SAT). A contribuição do TCC está na formulação do modelo e na escolha dos pesos, não
-  no algoritmo de busca do solver.
+  distância real do circuito. Sem isso a validação da Fase 4 acusaria falsas divergências.
+- **Não implemente um branch-and-bound manual, nem um TSP resolvido à parte.** Use
+  `ortools.sat.python.cp_model` (CP-SAT) e suas restrições nativas — inclusive
+  `AddCircuit` para a seleção de rota. A contribuição do TCC está na formulação do modelo e
+  na escolha dos pesos, não no algoritmo de busca do solver.
 - Para o teste de acurácia (Fase 4 do TCC), instâncias pequenas devem ser validadas por
   enumeração exaustiva em um script Python separado (`modelo/scripts/validacao_exaustiva.py`),
   comparando o custo obtido por enumeração com o custo devolvido pelo CP-SAT. A enumeração

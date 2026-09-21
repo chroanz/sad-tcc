@@ -8,6 +8,15 @@ na mesma coisa — a parcela `custo_logistico(y)` da função objetivo (seção 
 > **Estado deste documento.** A análise abaixo descreve o sistema **antes** das mudanças.
 > Os sete itens recomendados já foram implementados; o registro do que ficou como está na
 > seção [Recomendação consolidada](#recomendação-consolidada), ao final.
+>
+> **Atualização posterior.** O achado 3 abaixo ("a linearização cobra bem mais caro do que
+> a rota real") deixou de ser só um achado a declarar: foi **corrigido no modelo**, que
+> agora resolve a seleção de mercados e a ordem de visita juntas via `AddCircuit` (ver
+> `modelo/docs/formulacao-matematica.md` §7). Os números de sobrepreço, o limiar de R$/km e
+> os exemplos de "ponto de equilíbrio" nesta página foram medidos **antes** da correção — o
+> raciocínio de UX (mostrar o limiar em vez de um valor arbitrário) continua válido, mas os
+> valores concretos (R$ 8,26, 14,25 km, R$ 0,58/km) estão desatualizados e precisam ser
+> remedidos contra a resposta corrigida antes de irem para o texto final do TCC.
 
 ## Situação encontrada na análise
 
@@ -43,8 +52,9 @@ serviço responde **400** se passarem de 8. Cadastrar um nono mercado não degra
 quebra. Um raio resolveria isso pela raiz, transformando o teto em consequência de um
 recorte em vez de um limite arbitrário.
 
-**3. A linearização cobra bem mais caro do que a rota real.** Conferindo os números
-registrados:
+**3. A linearização cobrava bem mais caro do que a rota real (corrigido depois desta
+análise — ver a atualização no topo do documento).** Conferindo os números registrados na
+época:
 
 | Perfil | Logística cobrada | Traduzida em km | Rota real | Sobrepreço |
 |---|---|---|---|---|

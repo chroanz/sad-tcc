@@ -179,7 +179,7 @@ descartado na construção do modelo (restrição de estoque suficiente).
 |---|---|
 | `status` | `OTIMO` (ótimo provado), `VIAVEL` (solução encontrada, limite de tempo atingido) ou `INVIAVEL` |
 | `custo_itens_centavos` | soma dos itens efetivamente alocados |
-| `custo_logistico_centavos` | `custo_por_visita * nº mercados + custo_por_km * distância linearizada`, **sem** o peso |
+| `custo_logistico_centavos` | `custo_por_visita * nº mercados + custo_por_km * distância real do circuito`, **sem** o peso |
 | `custo_por_visita_centavos` / `custo_por_km_centavos` | os parâmetros **efetivamente usados** — os enviados na requisição ou, na ausência deles, os padrões `MODELO_*` do serviço. Ecoá-los é o que torna `custo_logistico_centavos` auditável: sem eles o valor não tem procedência |
 | `custo_total_centavos` | `custo_itens + custo_logistico` — o que o usuário de fato gasta/despende |
 | `valor_objetivo_centavos` | valor da função objetivo, **com** o peso aplicado e sem as penalidades |
@@ -215,7 +215,13 @@ Se nem sequer um mercado cobre um único item, todos os campos numéricos vêm `
 `observacao` preenchida — a economia nunca é inventada.
 
 Nos dois casos o custo do baseline inclui a mesma parcela logística (uma visita + ida e
-volta até aquele mercado), de modo que os dois lados sejam medidos com a mesma régua.
+volta até aquele mercado — exata, pois o baseline é sempre um único mercado, e nesse caso
+ida e volta e circuito coincidem), de modo que os dois lados sejam medidos com a mesma
+régua. Do lado da recomendação, quando a comparação cobre exatamente os mesmos mercados de
+toda a recomendação, a parcela logística é o `custo_logistico_centavos` real da resposta;
+só na comparação parcial (subconjunto de mercados) ela volta a ser aproximada pela soma de
+idas e voltas isoladas, por não existir uma forma exata de repartir o custo de um circuito
+compartilhado entre paradas.
 
 ### Desempate determinístico
 
@@ -225,21 +231,22 @@ requisito da validação da Fase 4 — o solve tem **duas fases**:
 
 1. minimiza a função objetivo e guarda o valor ótimo `Z*`;
 2. fixa `objetivo == Z*` como restrição e minimiza, em ordem lexicográfica, o **número de
-   mercados visitados** e depois a **distância linearizada total**.
+   mercados visitados** e depois a **distância real do circuito**.
 
 O valor reportado em `valor_objetivo_centavos` é sempre o `Z*` da primeira fase; a segunda
 fase apenas escolhe, entre as soluções ótimas, a mais conveniente.
 
-### Distância: dois números diferentes, de propósito
+### A rota é decidida dentro do modelo, não depois
 
-| Campo | O que é | Onde entra |
-|---|---|---|
-| distância **linearizada** | `Σ_j visitar[j] · 2 · d(origem, j)` | **dentro** da função objetivo |
-| `distancia_total_km` | rota real `origem → mercados na ordem → origem` | apenas **exibida** ao usuário |
-
-A linearizada é uma cota superior da rota real e não depende da ordem de visita, o que
-mantém o modelo linear e resolvível pelo CP-SAT. A rota real é calculada depois do solve.
-Essa fronteira é uma decisão de modelagem e deve constar no capítulo de metodologia.
+Até uma versão anterior deste contrato, a função objetivo usava uma **distância
+linearizada** (`Σ_j visitar[j] · 2 · d(origem, j)`, a ida e volta independente a cada
+mercado) para decidir quais mercados visitar, e só depois do solve uma rota real era
+calculada e exibida em `distancia_total_km` — dois números que podiam divergir, e em
+instâncias com vários mercados chegavam a divergir em mais de 60% (ver
+`modelo/docs/formulacao-matematica.md` §7.1). Isso foi corrigido: o modelo agora resolve a
+seleção **e** a ordem de visita juntas, com uma restrição de circuito nativa do CP-SAT
+(`AddCircuit`). `custo_logistico_centavos` e `distancia_total_km` refletem o mesmo trajeto
+sequencial, sempre — não há mais dois números para o mesmo conceito.
 
 ## Erros
 

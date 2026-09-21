@@ -103,7 +103,7 @@ sequenceDiagram
 | Dinheiro em centavos inteiros no fio | CP-SAT é um solver **inteiro**; float em dinheiro produz erro de arredondamento acumulado | conversão explícita nas bordas, documentada no contrato |
 | `precos` append-only | preserva a série histórica exigida pela fundamentação teórica do TCC | leitura passa pela view `precos_vigentes` |
 | Distância por haversine, sem PostGIS | a PoC tem um raio pequeno e poucos mercados; haversine tem erro desprezível nessa escala | não considera malha viária real |
-| Rota ordenada **após** o solve | manter a ordenação dentro do MILP transformaria o modelo em um TSP com seleção, fora do escopo da PoC | a distância usada no objetivo é uma linearização (ida e volta origem↔mercado) |
+| Rota decidida **dentro** do solve, via `AddCircuit` | o CP-SAT já resolve, nativamente, a seleção de nós e a ordem ótima de visita num único circuito — não precisa de um TSP resolvido à parte nem do módulo de Routing do OR-Tools | o modelo cresce em $|N|(|N|-1)$ variáveis de arco, irrelevante no teto da PoC (72 arcos para 8 mercados) |
 | Persistir `payload_resultado` como `jsonb` | trilha de auditoria para os testes de acurácia da Fase 4 sem criar tabelas de detalhe | duplicação controlada de dados |
 
 ## Portas, variáveis e execução

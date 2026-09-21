@@ -7,7 +7,7 @@ documento é a base do capítulo de resultados do TCC (Fase 4 do `plano_desenvol
 
 ```mermaid
 flowchart TD
-    A["Código do otimizador"] --> B["Camada 1: testes unitários<br/>pytest, 45 testes"]
+    A["Código do otimizador"] --> B["Camada 1: testes unitários<br/>pytest, 49 testes"]
     A --> C["Camada 2: validação exaustiva<br/>enumeração independente"]
 
     B --> B1["Cenários com ótimo<br/>calculado à mão"]
@@ -41,7 +41,8 @@ cd modelo
 | Arquivo | O que cobre |
 |---|---|
 | `test_logistica.py` | haversine contra distâncias geodésicas conhecidas, simetria, ida e volta, e a verificação de que os 6 mercados do recorte estão dentro do raio declarado de Juazeiro do Norte |
-| `test_modelo_cpsat.py` | o núcleo: trade-offs com ótimo calculado à mão, efeito do peso, estoque, casos de borda, determinismo e consistência dos custos |
+| `test_modelo_cpsat.py` | o núcleo: trade-offs com ótimo calculado à mão, efeito do peso, estoque, casos de borda, determinismo, consistência dos custos e o custo logístico real do circuito (não mais ida e volta independente) |
+| `test_rota.py` | extração das paradas a partir de um circuito já resolvido |
 | `test_economia.py` | os dois níveis do baseline de mercado único |
 | `test_api.py` | o contrato na fronteira HTTP: forma da resposta, as 5 regras de validação (422) e o teto da PoC |
 
@@ -163,8 +164,13 @@ que ela serve de referência confiável.
 | Instâncias avaliadas | 200 (semente 2026) |
 | Alocações avaliadas ao todo | 5.843 |
 | Taxa de convergência | 100% |
-| Tempo total da enumeração | 0,0131 s |
-| Tempo total do CP-SAT | 0,6967 s |
+| Tempo total da enumeração | 0,0303 s |
+| Tempo total do CP-SAT | 1,7957 s |
+
+O CP-SAT ficou mais lento que antes da correção (era 0,6967 s) porque `AddCircuit`
+acrescenta variáveis de arco e uma restrição de circuito a cada uma das duas fases do
+solve. Ainda assim, a casa de milissegundos por instância continua desprezível frente ao
+tempo de resposta esperado da API.
 
 O relatório completo, com uma linha por instância, está em
 [`../../docs/relatorio-validacao.md`](../../docs/relatorio-validacao.md) e é regerado por
@@ -178,7 +184,7 @@ combinações — inviável — enquanto o CP-SAT continua na casa dos milissegu
 ## 4. Portões de qualidade
 
 ```bash
-.venv/Scripts/python -m pytest testes -q                       # 45 testes
+.venv/Scripts/python -m pytest testes -q                       # 49 testes
 .venv/Scripts/python -m black --line-length 100 --check .      # formatação
 .venv/Scripts/python -m ruff check .                           # lint
 .venv/Scripts/python scripts/validacao_exaustiva.py --repeticoes 60   # sai 1 se divergir

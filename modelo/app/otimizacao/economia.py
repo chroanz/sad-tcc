@@ -16,7 +16,7 @@ visita mais ida e volta), de modo que os dois lados sejam medidos com a mesma r�
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, FrozenSet, List, Optional, Sequence
 
 from app.esquemas import Economia
 
@@ -64,14 +64,23 @@ def calcular_economia(
     itens_atendidos: Sequence[ItemParaEconomia],
     custo_logistico_por_mercado_centavos: Dict[int, int],
     nomes_de_mercado: Dict[int, str],
+    custo_logistico_recomendacao_real_centavos: int = 0,
 ) -> Economia:
     """Compara o custo da recomendação com o do melhor mercado único.
 
     Args:
         itens_atendidos: itens que a solução conseguiu alocar, com seus custos alternativos.
         custo_logistico_por_mercado_centavos: custo de visitar um mercado isoladamente
-            (``custo_por_visita + custo_por_km · 2 · d(origem, j)``), já em centavos.
+            (``custo_por_visita + custo_por_km · 2 · d(origem, j)``), já em centavos. Exato
+            para o baseline (que é sempre uma única visita) e usado como aproximação
+            conservadora do lado da recomendação quando a comparação é parcial (ver
+            :func:`_custo_da_recomendacao`).
         nomes_de_mercado: nome de cada ``mercado_id``, para compor a resposta.
+        custo_logistico_recomendacao_real_centavos: custo logístico real de **toda** a
+            recomendação (o mesmo valor de ``custo_logistico_centavos`` na resposta). Usado
+            no lugar da soma por mercado sempre que a comparação cobre exatamente os
+            mercados da recomendação inteira, para que a economia relatada nunca contradiga
+            o custo total já exibido ao usuário.
 
     Returns:
         O bloco ``economia`` do contrato, com o nível de comparação usado e, quando ela é
@@ -141,7 +150,13 @@ def calcular_economia(
     custo_baseline = _custo_do_baseline(
         subconjunto, mercado_baseline, custo_logistico_por_mercado_centavos
     )
-    custo_recomendacao = _custo_da_recomendacao(subconjunto, custo_logistico_por_mercado_centavos)
+    mercados_da_recomendacao = frozenset(item.mercado_escolhido for item in itens_atendidos)
+    custo_recomendacao = _custo_da_recomendacao(
+        subconjunto,
+        custo_logistico_por_mercado_centavos,
+        mercados_da_recomendacao,
+        custo_logistico_recomendacao_real_centavos,
+    )
     economia_centavos = custo_baseline - custo_recomendacao
     percentual = round(100.0 * economia_centavos / custo_baseline, 2) if custo_baseline else 0.0
 
@@ -179,22 +194,37 @@ def _custo_do_baseline(
 def _custo_da_recomendacao(
     itens: Sequence[ItemParaEconomia],
     custo_logistico_por_mercado_centavos: Dict[int, int],
+    mercados_da_recomendacao_completa: FrozenSet[int],
+    custo_logistico_recomendacao_real_centavos: int,
 ) -> int:
     """Custo do lado da recomendação, restrito ao mesmo subconjunto de itens.
 
-    A parcela logística considera apenas os mercados que a recomendação usa **para esses
-    itens** — é o que torna a comparação parcial honesta: se um mercado só existe na
-    solução por causa de um item fora do subconjunto, seu custo não entra na conta.
+    Quando o subconjunto usa exatamente os mesmos mercados da recomendação inteira (o caso
+    comum, de comparação completa), a parcela logística é o custo real do circuito —
+    ``custo_logistico_recomendacao_real_centavos``, o mesmo número já exibido em
+    ``custo_logistico_centavos`` — para nunca contradizer o custo total mostrado ao usuário.
+
+    Quando o subconjunto usa só parte dos mercados (comparação parcial), não há como saber
+    quanto do circuito conjunto "pertence" a esses mercados isoladamente — a rota é
+    compartilhada. A parcela logística vira, então, a soma das visitas isoladas a cada um
+    (``custo_logistico_por_mercado_centavos``): uma aproximação conservadora, sempre maior
+    ou igual ao custo real, que nunca superestima a economia relatada.
 
     Args:
         itens: subconjunto comparado.
         custo_logistico_por_mercado_centavos: custo de uma visita isolada a cada mercado.
+        mercados_da_recomendacao_completa: todos os mercados usados pela recomendação, não
+            só pelo subconjunto em comparação.
+        custo_logistico_recomendacao_real_centavos: custo logístico real de toda a
+            recomendação.
 
     Returns:
         A soma dos custos escolhidos mais a logística dos mercados envolvidos.
     """
     total_itens = sum(item.custo_escolhido_centavos for item in itens)
     mercados_usados = {item.mercado_escolhido for item in itens}
+    if mercados_usados == mercados_da_recomendacao_completa:
+        return total_itens + custo_logistico_recomendacao_real_centavos
     total_logistico = sum(
         custo_logistico_por_mercado_centavos.get(mercado_id, 0) for mercado_id in mercados_usados
     )

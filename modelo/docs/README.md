@@ -11,7 +11,7 @@ estado — o que o torna determinístico e testável isoladamente.
 
 | Documento | Conteúdo |
 |---|---|
-| [`formulacao-matematica.md`](formulacao-matematica.md) | **o modelo**: conjuntos, variáveis, restrições, função objetivo, linearização e desempate |
+| [`formulacao-matematica.md`](formulacao-matematica.md) | **o modelo**: conjuntos, variáveis, restrições, função objetivo, circuito de rota e desempate |
 | [`guia-cpsat.md`](guia-cpsat.md) | como o CP-SAT é usado na prática e por que ele, e não outro solver |
 | [`validacao-e-testes.md`](validacao-e-testes.md) | estratégia de testes e a validação por enumeração exaustiva da Fase 4 |
 | [`../../docs/contrato-otimizacao.md`](../../docs/contrato-otimizacao.md) | o contrato HTTP com a API Go, campo a campo |
@@ -27,7 +27,7 @@ modelo/
 │   └── otimizacao/
 │       ├── modelo_cpsat.py         # formulação e resolução em duas fases
 │       ├── logistica.py            # haversine e matriz de distâncias
-│       ├── rota.py                 # ordenação da rota após o solve
+│       ├── rota.py                 # extrai a ordem de visita do circuito resolvido
 │       └── economia.py             # baseline de mercado único
 ├── testes/                         # pytest
 ├── scripts/validacao_exaustiva.py  # validação da Fase 4
@@ -41,7 +41,7 @@ flowchart LR
     A["POST /otimizar"] --> B["Pydantic valida<br/>o contrato"]
     B --> C["Teto da PoC<br/>20 itens x 8 mercados"]
     C --> D["modelo_cpsat<br/>resolve em 2 fases"]
-    D --> E["rota<br/>ordena as paradas"]
+    D --> E["rota<br/>extrai as paradas do circuito"]
     D --> F["economia<br/>baseline de mercado único"]
     E --> G["Resposta do contrato"]
     F --> G
