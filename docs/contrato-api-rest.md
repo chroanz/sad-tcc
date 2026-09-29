@@ -164,7 +164,7 @@ otimizador — o que costuma gerar mais economia. Quando informado, restringe os
 | `origem` | não | padrão: `ORIGEM_PADRAO_*` do servidor. Quando omitida, a resposta traz `origem_aproximada: true` |
 | `raio_km` | não | recorta os mercados candidatos por distância **em linha reta a partir de `origem`**. Omitido: todos os cadastrados entram. Deve ser > 0 |
 
-Limite da PoC: listas com mais de **20 itens** ou cenários com mais de **8 mercados** são
+Limite da PoC: listas com mais de **20 itens** ou cenários com mais de **30 mercados** são
 rejeitados com `400 VALIDACAO` e mensagem descritiva. A instância nunca é processada
 parcialmente.
 
@@ -173,7 +173,7 @@ Perfis e seus pesos:
 | Perfil | `peso_conveniencia` | Comportamento esperado |
 |---|---|---|
 | `economico` | `0.0` | busca o menor preço, aceitando visitar muitos mercados |
-| `equilibrado` | `1.0` | pondera preço e deslocamento |
+| `equilibrado` | `1.0` | pondera preço e número de paradas (a distância não é precificada) |
 | `conveniente` | `3.0` | concentra a compra em poucos mercados, mesmo pagando mais |
 
 `201` →
@@ -187,13 +187,12 @@ Perfis e seus pesos:
   "peso_conveniencia": 1.0,
   "origem_aproximada": false,
   "raio_km": 7,
-  "mercados_considerados": 6,
+  "mercados_considerados": 28,
   "status": "OTIMO",
   "custo_itens_centavos": 11000,
   "custo_logistico_centavos": 1345,
   "custo_total_centavos": 12345,
   "custo_por_visita_centavos": 800,
-  "custo_por_km_centavos": 120,
   "quantidade_mercados_visitados": 2,
   "distancia_total_km": 7.42,
   "rota": [ { "ordem": 1, "mercado_id": 3, "nome": "Mercado Central", "distancia_do_anterior_km": 2.1 } ],

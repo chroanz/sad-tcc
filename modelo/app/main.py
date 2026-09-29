@@ -24,7 +24,7 @@ app = FastAPI(
     title="Serviço de otimização de compras",
     description=(
         "Núcleo de decisão do SAD de compras de supermercado: recebe a lista de compras "
-        "com os candidatos de preço e estoque por mercado e devolve a alocação ótima."
+        "com os candidatos de preço e disponibilidade por mercado e devolve a alocação ótima."
     ),
     version=CONFIGURACAO.versao,
 )
@@ -43,9 +43,8 @@ def verificar_saude() -> RespostaSaude:
 def _validar_teto_da_poc(requisicao: RequisicaoOtimizacao) -> None:
     """Rejeita instâncias acima do teto declarado da PoC (RNF03 / CB10).
 
-    O teto também é o limite em que a rota ainda é ordenada por enumeração exata; acima
-    dele o resultado deixaria de ser comprovadamente ótimo, o que a PoC não aceita
-    silenciosamente.
+    O teto de mercados cobre o catálogo inteiro da PoC (as cidades da base do DIEESE); ele
+    existe para que uma instância fora do escopo seja recusada, e não resolvida em silêncio.
 
     Args:
         requisicao: payload já validado pelo Pydantic.
@@ -83,7 +82,7 @@ def otimizar(requisicao: RequisicaoOtimizacao) -> RespostaOtimizacao:
         requisicao: payload de ``POST /otimizar``.
 
     Returns:
-        A recomendação completa: alocação, rota, decomposição de custos e economia.
+        A recomendação completa: alocação, ordem de visita, decomposição de custos e economia.
 
     Raises:
         HTTPException: ``422`` para instância acima do teto da PoC; ``500`` se o solver

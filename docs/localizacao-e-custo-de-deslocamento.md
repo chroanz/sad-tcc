@@ -5,6 +5,16 @@ definir o raio de busca** e **em que unidade apresentar o custo logístico**. As
 na mesma coisa — a parcela `custo_logistico(y)` da função objetivo (seção 5 do
 `CLAUDE.md`) — e por isso são tratadas juntas.
 
+> **Documento histórico (revisão de escopo de 2026-09-28).** A distância percorrida
+> **deixou de ser precificada**: não há mais custo por km, circuito nem `AddCircuit`. O
+> modelo decide por preço e disponibilidade, e a ordem de visita é o vizinho mais próximo a
+> partir da origem. Os supermercados passaram a ser 28 supermercados fictícios em Juazeiro
+> do Norte, um por cidade da base do DIEESE, com os preços daquela cidade; os raios
+> oferecidos continuam 2, 5, 7 e 10 km. A distância agora é em linha reta simples, sem
+> haversine. O que continua valendo daqui: a obtenção da origem, o recorte por
+> raio no SQL e a ideia de mostrar o limiar em vez de impor um valor (agora por parada).
+> Ver `modelo/docs/formulacao-matematica.md` §7 e §9.
+>
 > **Estado deste documento.** A análise abaixo descreve o sistema **antes** das mudanças.
 > Os sete itens recomendados já foram implementados; o registro do que ficou como está na
 > seção [Recomendação consolidada](#recomendação-consolidada), ao final.

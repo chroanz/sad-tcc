@@ -37,8 +37,8 @@ async function enviar(): Promise<void> {
       <span class="hero__sinal" aria-hidden="true">CC</span>
       <h1>Compra Certa</h1>
       <p>
-        Monte sua lista e descubra em quais supermercados de Juazeiro do Norte comprar cada
-        item, equilibrando preço e deslocamento.
+        Monte sua lista da cesta básica e descubra em quais supermercados de Juazeiro do
+        Norte comprar cada item, equilibrando preço, disponibilidade e número de paradas.
       </p>
     </div>
 

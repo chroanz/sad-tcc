@@ -4,11 +4,11 @@ import type { Recomendacao } from '@/api/tipos'
 /**
  * Comparação entre dois perfis de compra, em linguagem de decisão.
  *
- * O sistema não sabe quanto vale um quilômetro para quem vai comprar: o
- * `custo_por_km_centavos` é um parâmetro de servidor, calibrado para carro. Em vez de
- * impor esse valor, a comparação devolve o **ponto de equilíbrio** — o limiar em que a
- * escolha se inverte — e deixa o julgamento com o usuário. É o que se espera de um
- * sistema de apoio à decisão: apoiar a decisão, não substituí-la.
+ * O SAD decide por preço e disponibilidade; a distância percorrida não é precificada. O
+ * que separa os perfis é o que se paga no caixa contra quantos mercados se visita e quantos
+ * quilômetros se anda. A comparação diz isso em termos concretos — "R$ 5,04 a mais no
+ * caixa, em troca de 2 mercados em vez de 3" — e deixa o julgamento com o usuário, em vez
+ * de impor um valor para a parada ou para o quilômetro.
  */
 
 /** Abaixo disso a diferença de percurso não é distinguível na prática. */
@@ -29,45 +29,46 @@ export interface ComparacaoDePerfis {
   diferencaKm: number
   /** O que muda ao trocar de perfil, em uma frase. */
   resumo: string
-  /** O limiar em que a troca passa a compensar, quando existe troca. */
+  /**
+   * Quanto cada mercado a mais (ou a menos) vale no caixa. Só existe quando a troca muda
+   * duas paradas ou mais; com uma só, repetiria o valor do resumo.
+   */
   pontoDeEquilibrio: string | null
 }
 
-function pluralizarParadas(quantidade: number): string {
-  return quantidade === 1 ? '1 parada' : `${quantidade} paradas`
-}
-
-/** Descreve o esforço de deslocamento com as parcelas que de fato mudaram. */
-function descreverEsforco(paradas: number, km: number): string {
-  const partes: string[] = []
-  if (paradas !== 0) partes.push(pluralizarParadas(Math.abs(paradas)))
-  if (Math.abs(km) >= TOLERANCIA_KM) partes.push(formatarDistancia(Math.abs(km)))
-  return partes.join(' e ')
+function pluralizarMercados(quantidade: number): string {
+  return quantidade === 1 ? '1 mercado' : `${quantidade} mercados`
 }
 
 /**
- * Monta a frase do limiar. Quando há diferença de percurso, o limiar é por quilômetro;
- * quando os perfis andam o mesmo e só mudam de paradas, é por parada.
+ * Descreve o esforço do candidato em relação à referência, com as parcelas que de fato
+ * mudaram: "2 mercados em vez de 3 e 1,4 km a menos".
  */
-function montarPontoDeEquilibrio(
-  economiaCentavos: number,
-  paradas: number,
-  km: number,
-  sentido: 'menos' | 'mais'
-): string | null {
-  if (economiaCentavos <= 0) return null
-
+function descreverEsforco(referencia: Recomendacao, candidato: Recomendacao, km: number): string {
+  const partes: string[] = []
+  if (candidato.quantidade_mercados_visitados !== referencia.quantidade_mercados_visitados) {
+    partes.push(
+      `${pluralizarMercados(candidato.quantidade_mercados_visitados)} em vez de ` +
+        `${referencia.quantidade_mercados_visitados}`
+    )
+  }
   if (Math.abs(km) >= TOLERANCIA_KM) {
-    const porKm = Math.round(economiaCentavos / Math.abs(km))
-    return `Compensa se, para você, rodar 1 km custar ${sentido} de ${formatarReais(porKm)}.`
+    partes.push(`${formatarDistancia(Math.abs(km))} a ${km > 0 ? 'mais' : 'menos'}`)
   }
+  return partes.join(' e ')
+}
 
-  if (paradas !== 0) {
-    const porParada = Math.round(economiaCentavos / Math.abs(paradas))
-    return `Compensa se cada parada extra custar ${sentido} de ${formatarReais(porParada)}.`
-  }
-
-  return null
+/** Valor de cada mercado a mais ou a menos, quando a troca muda duas paradas ou mais. */
+function valorPorMercado(
+  diferencaCentavos: number,
+  paradas: number,
+  sentido: 'economiza' | 'custa'
+): string | null {
+  if (diferencaCentavos <= 0 || Math.abs(paradas) < 2) return null
+  const porMercado = formatarReais(Math.round(diferencaCentavos / Math.abs(paradas)))
+  return sentido === 'economiza'
+    ? `Cada mercado a mais economiza, em média, ${porMercado}.`
+    : `Cada mercado a menos custa, em média, ${porMercado}.`
 }
 
 /**
@@ -78,8 +79,8 @@ function montarPontoDeEquilibrio(
  *   candidato: o perfil alternativo sendo avaliado.
  *
  * Returns:
- *   A relação entre os dois, com o resumo e, quando há troca real entre economia e
- *   deslocamento, o ponto de equilíbrio.
+ *   A relação entre os dois, com o resumo e, quando a troca muda várias paradas, o valor
+ *   de cada mercado no caixa.
  */
 export function compararPerfis(
   referencia: Recomendacao,
@@ -91,6 +92,7 @@ export function compararPerfis(
   const diferencaKm = candidato.distancia_total_km - referencia.distancia_total_km
 
   const base = { diferencaItensCentavos, diferencaParadas, diferencaKm }
+  const esforco = descreverEsforco(referencia, candidato, diferencaKm)
 
   const mesmoPreco = diferencaItensCentavos === 0
   const mesmoPercurso = Math.abs(diferencaKm) < TOLERANCIA_KM && diferencaParadas === 0
@@ -107,21 +109,27 @@ export function compararPerfis(
   const andaMais = diferencaKm > TOLERANCIA_KM || diferencaParadas > 0
   const andaMenos = diferencaKm < -TOLERANCIA_KM || diferencaParadas < 0
 
-  // Melhor nos dois critérios: não há troca a avaliar, logo não há limiar.
+  // Melhor nos dois critérios: não há troca a avaliar.
   if (diferencaItensCentavos <= 0 && !andaMais) {
+    const preco = mesmoPreco
+      ? 'Mesmo valor no caixa'
+      : `${formatarReais(-diferencaItensCentavos)} a menos no caixa`
     return {
       ...base,
       relacao: 'domina',
-      resumo: 'Paga menos e anda menos: é melhor nos dois critérios.',
+      resumo: esforco ? `${preco}, com ${esforco}.` : `${preco}.`,
       pontoDeEquilibrio: null
     }
   }
 
   if (diferencaItensCentavos >= 0 && !andaMenos) {
+    const preco = mesmoPreco
+      ? 'Mesmo valor no caixa'
+      : `${formatarReais(diferencaItensCentavos)} a mais no caixa`
     return {
       ...base,
       relacao: 'dominado',
-      resumo: 'Paga mais e anda mais: não há vantagem em trocar.',
+      resumo: esforco ? `${preco}, com ${esforco}: não compensa.` : `${preco}: não compensa.`,
       pontoDeEquilibrio: null
     }
   }
@@ -131,29 +139,15 @@ export function compararPerfis(
     return {
       ...base,
       relacao: 'economiza-andando-mais',
-      resumo:
-        `Economiza ${formatarReais(economia)}, mas exige ` +
-        `${descreverEsforco(diferencaParadas, diferencaKm)} a mais.`,
-      pontoDeEquilibrio: montarPontoDeEquilibrio(
-        economia,
-        diferencaParadas,
-        diferencaKm,
-        'menos'
-      )
+      resumo: `Economiza ${formatarReais(economia)} no caixa, mas com ${esforco}.`,
+      pontoDeEquilibrio: valorPorMercado(economia, diferencaParadas, 'economiza')
     }
   }
 
   return {
     ...base,
     relacao: 'poupa-percurso-pagando-mais',
-    resumo:
-      `Custa ${formatarReais(diferencaItensCentavos)} a mais, mas poupa ` +
-      `${descreverEsforco(diferencaParadas, diferencaKm)}.`,
-    pontoDeEquilibrio: montarPontoDeEquilibrio(
-      diferencaItensCentavos,
-      diferencaParadas,
-      diferencaKm,
-      'mais'
-    )
+    resumo: `Paga ${formatarReais(diferencaItensCentavos)} a mais no caixa, em troca de ${esforco}.`,
+    pontoDeEquilibrio: valorPorMercado(diferencaItensCentavos, diferencaParadas, 'custa')
   }
 }

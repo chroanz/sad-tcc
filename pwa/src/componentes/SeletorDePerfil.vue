@@ -22,7 +22,7 @@ const TEXTOS: Record<PerfilConveniencia, { titulo: string; explicacao: string }>
   },
   equilibrado: {
     titulo: 'Equilibrado',
-    explicacao: 'Pondera o quanto se economiza contra o quanto se anda.'
+    explicacao: 'Pondera o quanto se economiza contra o número de mercados a visitar.'
   },
   conveniente: {
     titulo: 'Conveniente',

@@ -95,8 +95,9 @@ class ItemEntrada(BaseModel):
 class RequisicaoOtimizacao(BaseModel):
     """Payload completo de ``POST /otimizar``.
 
-    Os campos logísticos e o limite de tempo têm padrões vindos da configuração
-    (``MODELO_*``), de modo que a API Go possa omiti-los.
+    O custo por visita e o limite de tempo têm padrões vindos da configuração
+    (``MODELO_*``), de modo que a API Go possa omiti-los. Não há custo por quilômetro: a
+    distância percorrida não é precificada.
     """
 
     model_config = ConfigDict(extra="ignore")
@@ -105,9 +106,6 @@ class RequisicaoOtimizacao(BaseModel):
     peso_conveniencia: float = Field(ge=0.0)
     custo_por_visita_centavos: int = Field(
         default_factory=lambda: CONFIGURACAO.custo_por_visita_centavos, ge=0
-    )
-    custo_por_km_centavos: int = Field(
-        default_factory=lambda: CONFIGURACAO.custo_por_km_centavos, ge=0
     )
     limite_tempo_segundos: float = Field(
         default_factory=lambda: CONFIGURACAO.limite_tempo_segundos, gt=0.0
@@ -138,7 +136,7 @@ class RequisicaoOtimizacao(BaseModel):
 
 
 class ParadaRota(BaseModel):
-    """Uma parada da rota sugerida, na ordem de visita."""
+    """Uma parada da rota sugerida, na ordem de visita (o mais próximo primeiro)."""
 
     ordem: int
     mercado_id: int
@@ -179,6 +177,9 @@ class ItemNaoAtendido(BaseModel):
 class Economia(BaseModel):
     """Comparação da recomendação com o baseline de mercado único.
 
+    A comparação é só do que se paga no caixa (os itens); o custo das paradas fica de fora.
+    O esforço de cada lado aparece à parte, em quilômetros.
+
     Quando nenhum mercado cobre sequer um item atendido, os campos numéricos vêm nulos e
     ``observacao`` explica o motivo — a economia nunca é inventada.
     """
@@ -186,6 +187,7 @@ class Economia(BaseModel):
     mercado_unico_id: Optional[int] = None
     mercado_unico_nome: Optional[str] = None
     custo_mercado_unico_centavos: Optional[int] = None
+    distancia_mercado_unico_km: Optional[float] = None
     economia_centavos: Optional[int] = None
     economia_percentual: Optional[float] = None
     itens_comparados: int = 0
@@ -211,11 +213,10 @@ class RespostaOtimizacao(BaseModel):
     custo_total_centavos: int
     valor_objetivo_centavos: int
     peso_conveniencia: float
-    # Os dois parâmetros logísticos voltam junto do resultado porque são o que torna
-    # `custo_logistico_centavos` auditável: sem eles o valor é um número sem procedência,
+    # O custo por visita volta junto do resultado porque é o que torna
+    # `custo_logistico_centavos` auditável: sem ele o valor é um número sem procedência,
     # tanto para o usuário quanto para a comparação de execuções da Fase 4.
     custo_por_visita_centavos: int
-    custo_por_km_centavos: int
     quantidade_mercados_visitados: int
     distancia_total_km: float
     rota: List[ParadaRota] = Field(default_factory=list)

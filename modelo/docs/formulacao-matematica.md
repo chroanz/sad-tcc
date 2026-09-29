@@ -1,20 +1,36 @@
 # Formulação matemática
 
-Este é o documento central do trabalho: descreve o modelo de Programação Inteira que
-decide **onde comprar cada item**. Ele é a fonte do capítulo de metodologia do TCC e
-espelha exatamente o código de [`app/otimizacao/modelo_cpsat.py`](../app/otimizacao/modelo_cpsat.py).
+Este é o documento central do trabalho. Ele descreve o modelo de Programação Inteira que
+decide **onde comprar cada item**, é a fonte do capítulo de metodologia do TCC e espelha
+exatamente o código de [`app/otimizacao/modelo_cpsat.py`](../app/otimizacao/modelo_cpsat.py).
 
 ## 1. O problema
 
-Dada uma lista de compras e um conjunto de supermercados de Juazeiro do Norte/CE, cada um
-com seus preços e estoques, decidir em qual mercado comprar cada item, minimizando
-simultaneamente:
+Dada uma lista de compras da cesta básica e um conjunto de mercados, cada um com seus
+preços e sua disponibilidade, decidir em qual mercado comprar cada item, minimizando ao
+mesmo tempo:
 
-- o **custo financeiro** — a soma do que se paga pelos itens;
-- o **custo logístico** — o incômodo de visitar vários mercados espalhados pela cidade.
+- o **custo financeiro**, que é a soma do que se paga pelos itens;
+- o **custo de conveniência**, que é o incômodo de parar em vários mercados, medido pelo
+  **número de mercados visitados**.
 
-Os dois objetivos são conflitantes: o menor preço quase sempre exige visitar mais lojas.
-É esse conflito que o modelo resolve de forma explícita e auditável.
+Os dois objetivos são conflitantes: o menor preço quase sempre exige visitar mais
+mercados. É esse conflito que o modelo resolve de forma explícita e auditável.
+
+**O SAD decide por preço e disponibilidade.** A distância percorrida **não é
+precificada** e não entra na função objetivo. Ela aparece em três lugares, sempre fora do
+custo:
+
+- no recorte por raio, que define quais mercados entram na instância;
+- no desempate entre soluções de custo idêntico (seção 8);
+- na ordem de visita, montada depois do solve (seção 9), e no total de quilômetros exibido
+  ao usuário.
+
+**O escopo e os dados.** O recorte é **Juazeiro do Norte/CE**. Os preços vêm da Pesquisa
+Nacional da Cesta Básica de Alimentos do DIEESE, que publica um preço médio por cidade: cada
+nome de cidade vira um **supermercado fictício em Juazeiro** que pratica os preços daquela
+cidade. Os itens se restringem aos 13 da cesta, e cada um tem duas marcas fictícias. A conversão está
+documentada em [`docs/dados-e-coleta.md`](../../docs/dados-e-coleta.md).
 
 ## 2. Conjuntos
 
@@ -22,12 +38,13 @@ Os dois objetivos são conflitantes: o menor preço quase sempre exige visitar m
 |---|---|
 | $I$ | itens da lista de compras, indexados por $i$ |
 | $J$ | mercados considerados, indexados por $j$ |
-| $N = \{0\} \cup J$ | nós do circuito de rota: $0$ é a origem, os demais são os mercados |
 | $C \subseteq I \times J$ | **pares candidatos**: existe preço cadastrado de $i$ em $j$ **e** o estoque cobre a quantidade pedida |
 
-A restrição de estoque não aparece como desigualdade no modelo: ela é aplicada na
-**construção de $C$**. Um par que não atende ao estoque simplesmente não gera variável.
-Isso reduz o modelo e torna a restrição impossível de violar por construção.
+A restrição de disponibilidade não aparece como desigualdade no modelo: ela é aplicada na
+**construção de $C$**. Um par sem preço, ou sem estoque suficiente, simplesmente não gera
+variável. Isso reduz o modelo e torna a restrição impossível de violar por construção. Na
+base do DIEESE, a indisponibilidade real é a célula `-`: a Batata, por exemplo, não é
+pesquisada no Norte e no Nordeste.
 
 ## 3. Parâmetros
 
@@ -36,36 +53,34 @@ Isso reduz o modelo e torna a restrição impossível de violar por construção
 | $p_{ij}$ | preço unitário do item $i$ no mercado $j$ | centavos |
 | $q_i$ | quantidade pedida do item $i$ | unidade do item |
 | $c_{ij}$ | custo total do item $i$ comprado em $j$ | centavos |
-| $\delta_{ab}$ | distância haversine entre os nós $a, b \in N$ | metros |
-| $d_j$ | $2 \cdot \delta_{0j}$, distância de ida e volta entre a origem e o mercado $j$ | metros |
-| $f$ | custo fixo por mercado visitado (padrão R$ 8,00) | centavos |
-| $k$ | custo por quilômetro percorrido (padrão R$ 1,20) | centavos |
-| $g_{ab}$ | custo logístico do arco $(a,b)$, $\lfloor k \cdot \delta_{ab} / 1000 + 0{,}5 \rfloor$ | centavos |
-| $\ell_j$ | custo logístico de visitar **só** o mercado $j$, isoladamente (visita + $d_j$) | centavos |
+| $f$ | custo fixo por mercado visitado (padrão R\$ 8,00) | centavos |
 | $\lambda$ | peso de conveniência (escalarização) | adimensional |
 | $M$ | penalidade de não atendimento | centavos |
+| $\delta_j$ | distância em linha reta entre a origem e o mercado $j$ (**só** no desempate) | metros |
 
-$d_j$ e $\ell_j$ não entram mais na função objetivo (seção 7): são cotas superiores da rota
-real, usadas só para dimensionar $M$ e o desempate, e o custo exato do baseline de mercado
-único (seção 10), que é sempre uma visita isolada. Quem entra no objetivo é $g_{ab}$, o
-custo de cada arco do circuito.
+O custo de um item é:
 
-O custo de um item e o custo logístico de um mercado visitado isoladamente são:
-
-$$c_{ij} = \left\lfloor p_{ij} \cdot q_i + 0{,}5 \right\rfloor \qquad
-\ell_j = f + \left\lfloor \frac{k \cdot d_j}{1000} + 0{,}5 \right\rfloor$$
+$$c_{ij} = \left\lfloor p_{ij} \cdot q_i + 0{,}5 \right\rfloor$$
 
 O arredondamento é sempre **meio para cima**, nunca o `round` embutido do Python, que usa
-arredondamento bancário — sob ele o custo de um item dependeria da paridade do resultado,
-e a reprodutibilidade exigida pela Fase 4 se perderia.
+arredondamento bancário. Sob ele, o custo de um item dependeria da paridade do resultado, e
+a reprodutibilidade exigida pela Fase 4 se perderia.
+
+A distância é a **linha reta num plano local**. As diferenças de latitude e longitude viram
+metros (a de longitude encolhida pelo cosseno da latitude média), e a distância é a
+hipotenusa:
+
+$$\delta = R\sqrt{(\Delta\varphi)^2 + (\Delta\lambda_{\text{lon}} \cos\bar\varphi)^2}$$
+
+com $R$ = 6.371.008,8 m e os ângulos em radianos. É a forma mais simples de distância que
+ainda fala em metros.
 
 ## 4. Variáveis de decisão
 
 $$
 x_{ij} \in \{0,1\} \quad \forall (i,j) \in C \qquad
 y_j \in \{0,1\} \quad \forall j \in J \qquad
-u_i \in \{0,1\} \quad \forall i \in I \qquad
-z_{ab} \in \{0,1\} \quad \forall a, b \in N, a \ne b
+u_i \in \{0,1\} \quad \forall i \in I
 $$
 
 | Variável | No código | Significado |
@@ -73,7 +88,6 @@ $$
 | $x_{ij}$ | `comprar[i][j]` | o item $i$ é comprado no mercado $j$ |
 | $y_j$ | `visitar[j]` | o mercado $j$ entra no roteiro |
 | $u_i$ | `nao_atendido[i]` | o item $i$ fica sem alocação |
-| $z_{ab}$ | `arco[a][b]` | a rota vai direto do nó $a$ ao nó $b$ |
 
 ```mermaid
 graph TD
@@ -84,7 +98,6 @@ graph TD
         X["x[i][j] = 1<br/>comprar i no mercado j"]
         U["u[i] = 1<br/>item i não atendido"]
         Y["y[j] = 1<br/>visitar o mercado j"]
-        Z["z[a][b] = 1<br/>ir direto de a a b"]
     end
     subgraph Mercados["Mercados"]
         M1["Mercado j"]
@@ -94,45 +107,27 @@ graph TD
     I1 -->|"ou nenhuma delas"| U
     X -->|"x[i][j] menor ou igual a y[j]"| Y
     Y --> M1
-    Y -->|"auto-laço se y[j] = 0"| Z
-    Z -->|"AddCircuit"| M1
 
     style U fill:#fde8e8,stroke:#c04
     style X fill:#e8f0fe,stroke:#4a6fa5
-    style Z fill:#e8f0fe,stroke:#4a6fa5
 ```
 
-A variável $u_i$ é o que impede o modelo de ser inviável. Sem ela, uma lista com um item
-que nenhum mercado tem tornaria o problema insatisfazível, e o usuário receberia um erro
-em vez de uma recomendação para os demais itens.
-
-As variáveis $z_{ab}$ não têm auto-laço ($a = b$) na tabela acima porque o auto-laço de
-cada nó não é uma variável livre: é o literal `visitar[j].Not()` (ou, para a origem,
-"nenhum mercado visitado", ver seção 7) passado direto para `AddCircuit`. Amarrar o
-auto-laço a $y_j$ é o que faz $z$ e $y$ concordarem por construção — não é preciso nenhuma
-restrição extra ligando as duas.
+A variável $u_i$ é o que impede o modelo de ser inviável. Sem ela, uma lista com um item que
+nenhum mercado tem tornaria o problema insatisfazível, e o usuário receberia um erro em vez
+de uma recomendação para os demais itens.
 
 ## 5. Restrições
 
-**Atribuição exata** — todo item tem um destino explícito, e a quantidade de um item nunca
-é dividida entre mercados:
+**Atribuição exata**: todo item tem um destino explícito, e a quantidade de um item nunca é
+dividida entre mercados.
 
 $$\sum_{j : (i,j) \in C} x_{ij} + u_i = 1 \qquad \forall i \in I$$
 
-**Acoplamento compra–visita** — só se compra onde se visita:
+**Acoplamento compra–visita**: só se compra onde se visita.
 
 $$x_{ij} \le y_j \qquad \forall (i,j) \in C$$
 
-**Circuito de rota** — os nós de $N$ formam uma única rota fechada, com os mercados fora
-dela ($y_j = 0$) e a origem (quando nenhum mercado é visitado) marcados por auto-laço:
-
-$$\texttt{AddCircuit}\big(\{(a,b,z_{ab}) : a \ne b\} \,\cup\, \{(j,j,\lnot y_j) : j \in J\} \,\cup\, \{(0,0,\lnot w)\}\big)$$
-
-onde $w \in \{0,1\}$ é uma variável auxiliar equivalente a $\sum_j y_j \ge 1$ (seção 7).
-`AddCircuit` é uma restrição **nativa** do CP-SAT — não há busca escrita à mão aqui, só a
-formulação de quais arcos e auto-laços entram nela.
-
-Essas três famílias são a formulação inteira completa. Não há restrição de capacidade nem
+Essas duas famílias são a formulação inteira completa. Não há restrição de capacidade nem
 de orçamento: a PoC assume que o usuário compra o que a lista pede.
 
 ## 6. Função objetivo
@@ -141,12 +136,12 @@ Escalarização por soma ponderada dos dois objetivos:
 
 $$
 \min \underbrace{\sum_{(i,j) \in C} c_{ij}\, x_{ij}}_{\text{custo financeiro}}
-\; + \; \lambda \underbrace{\Big(f \sum_{j \in J} y_j + \sum_{a \ne b} g_{ab}\, z_{ab}\Big)}_{\text{custo logístico}}
+\; + \; \lambda \underbrace{f \sum_{j \in J} y_j}_{\text{custo de conveniência}}
 \; + \; M \sum_{i \in I} u_i
 $$
 
-O custo logístico é o custo fixo de cada mercado visitado mais o custo dos arcos que o
-circuito (seção 7) realmente percorre — não mais uma aproximação por mercado.
+O custo de conveniência é só o custo fixo de cada mercado visitado. Um mercado a 5 km e
+outro a 1.000 km custam o mesmo $f$: quilômetros não têm preço.
 
 ### 6.1 Aritmética inteira
 
@@ -155,142 +150,83 @@ escalar tudo por $E = 100$ e usar $\Lambda = \lfloor \lambda E + 0{,}5 \rfloor$:
 
 $$
 Z = E \sum_{(i,j) \in C} c_{ij}\, x_{ij}
-+ \Lambda \Big(f \sum_{j \in J} y_j + \sum_{a \ne b} g_{ab}\, z_{ab}\Big)
++ \Lambda f \sum_{j \in J} y_j
 + E\,M \sum_{i \in I} u_i
 $$
 
 O objetivo é minimizado em centésimos de centavo. Nada é convertido para ponto flutuante
-em nenhum ponto da resolução — as conversões acontecem só na montagem da resposta.
+durante a resolução; as conversões acontecem só na montagem da resposta.
 
 ### 6.2 A penalidade não é um "número grande mágico"
 
-$M$ continua calculado a partir de $\ell_j$ — a ida e volta isolada, **não** o custo real do
-arco — porque $\ell_j$ é uma cota superior válida do que qualquer mercado custa dentro de
-um circuito (seção 7 explica por quê), e é isso que $M$ precisa: um teto, não o valor exato.
+$$M = \sum_{(i,j) \in C} c_{ij} \; + \; \left\lceil \frac{\Lambda\, f\, |J|}{E} \right\rceil \; + \; 1$$
 
-$$M = \sum_{(i,j) \in C} c_{ij} \; + \; \left\lceil \frac{\Lambda \sum_{j \in J} \ell_j}{E} \right\rceil \; + \; 1$$
-
-O raciocínio: abandonar um item pode, no melhor caso concebível, poupar o custo de todos
-os pares candidatos da instância somado a toda a parcela logística possível — mesmo
-superestimando essa parcela com $\ell_j$ em vez do custo real do circuito, **ainda assim**
-$M$ é grande o bastante. Somando 1 a esse teto, **qualquer** solução que deixe de atender
-um item atendível fica estritamente pior que a alternativa que o atende. A penalidade nunca
-distorce a comparação entre soluções viáveis, e isso é demonstrável em vez de empírico — um
-`BIG_M = 999999` arbitrário não teria essa garantia.
+O raciocínio: abandonar um item pode, no melhor caso concebível, poupar o custo de todos os
+pares candidatos da instância somado ao custo ponderado de visitar todos os mercados.
+Somando 1 a esse teto, **qualquer** solução que deixe de atender um item atendível fica
+estritamente pior que a alternativa que o atende. A penalidade nunca distorce a comparação
+entre soluções viáveis, e isso é demonstrável em vez de empírico. Um `BIG_M = 999999`
+arbitrário não teria essa garantia.
 
 ### 6.3 O peso e os três perfis
 
 | Perfil | $\lambda$ | Efeito |
 |---|---|---|
-| `economico` | 0,0 | o termo logístico desaparece; o modelo caça o menor preço, aceitando visitar todos os mercados |
-| `equilibrado` | 1,0 | cada mercado extra precisa se pagar: uma visita custa R$ 8,00 mais R$ 1,20 por km percorrido do circuito |
-| `conveniente` | 3,0 | o incômodo vale o triplo; a compra se concentra em poucas lojas |
+| `economico` | 0,0 | o termo de conveniência desaparece; o modelo caça o menor preço, aceitando visitar quantos mercados for preciso |
+| `equilibrado` | 1,0 | cada mercado extra precisa se pagar: só entra se economizar mais que R\$ 8,00 |
+| `conveniente` | 3,0 | cada parada vale o triplo (R\$ 24,00); a compra se concentra em poucos mercados |
 
 A API aceita qualquer $\lambda \ge 0$, o que permite varrer a fronteira de Pareto nos
 experimentos da Fase 4 sem alterar o código.
 
-## 7. Seleção conjunta da rota: circuito no CP-SAT
+## 7. Evolução do tratamento da distância (histórico)
 
-**Esta seção documenta uma correção de modelagem, não a formulação original.** Até uma
-versão anterior deste documento, o custo logístico usava a distância de **ida e volta
-independente entre a origem e cada mercado**, $d_j = 2 \cdot \delta_{0j}$, somada sobre os
-mercados visitados — como se o usuário voltasse à origem entre uma compra e outra. Na vida
-real ele vai de um mercado direto ao seguinte. A seção 7.1 quantifica o que essa
-aproximação custava; a 7.2 descreve a correção adotada.
+**Esta seção registra decisões de modelagem anteriores.** O tratamento do deslocamento
+passou por três versões:
 
-### 7.1 O problema da aproximação por ida e volta (histórico)
-
-| | Ida e volta independente | Rota real |
+| Versão | Custo logístico no objetivo | Ordem de visita |
 |---|---|---|
-| Fórmula | $\sum_j 2\,\delta_{0j}\, y_j$ | origem → mercados na ordem → origem |
-| Depende da ordem de visita? | não | sim |
-| Onde era usada | **dentro** da função objetivo | apenas **exibida** ao usuário |
+| 1. Ida e volta linearizada | $f\,y_j + k \cdot 2\delta_j\, y_j$ por mercado | TSP resolvido depois do solve |
+| 2. Circuito no CP-SAT | $f\,y_j$ + custo por km dos arcos de um `AddCircuit` | decidida dentro do solve |
+| 3. **Atual** | só $f\,y_j$; distância fora do objetivo | vizinho mais próximo, depois do solve |
 
-A justificativa original era que ida e volta independente é uma **cota superior** da rota
-real (desigualdade triangular: um circuito por $n$ mercados nunca custa mais que $n$
-viagens separadas de casa), o que tornava o modelo "conservador" — mas conservador demais,
-de um jeito que distorcia a própria decisão. Medindo na base de semente de Juazeiro do
-Norte, com 18 itens e 6 mercados:
+**Da versão 1 para a 2.** A ida e volta independente cobrava como se o usuário voltasse
+para casa entre um mercado e outro. Na base de semente então usada (6 mercados fictícios em
+Juazeiro do Norte), isso superestimava o custo logístico do perfil econômico em 62%. O
+modelo passou a decidir o circuito real com a restrição nativa `AddCircuit`.
 
-| Perfil | Mercados | Distância linearizada | Rota real | Sobrepreço |
-|---|---|---|---|---|
-| Equilibrado | 2 | 8,14 km | 7,65 km | +6% |
-| Econômico | 6 | 35,58 km | 21,90 km | **+62%** |
+**Da versão 2 para a 3.** O autor decidiu simplificar a PoC: o SAD passa a decidir **por
+preço e disponibilidade**, e precificar a distância percorrida saiu do escopo. Três
+consequências:
 
-Com seis mercados o modelo cobrava por uma viagem que ninguém faria, e cobrava
-**sistematicamente mais** as soluções com mais paradas — exatamente o perfil econômico, que
-é o que mais se beneficiaria de rotear bem. O modelo escolhia menos mercados do que o ótimo
-verdadeiro escolheria, não porque visitar mais lojas fosse de fato pior, mas porque a
-aproximação exagerava o custo de fazê-lo.
+- as variáveis de arco, a restrição `AddCircuit` e o parâmetro de custo por km saíram do
+  modelo;
+- a conveniência passou a ser medida só pelo número de mercados;
+- o modelo encolheu de $|C| + |J| + |I| + |J|(|J|+1)$ para $|C| + |J| + |I|$ variáveis.
 
-### 7.2 A correção: `AddCircuit`
-
-O CP-SAT tem uma restrição nativa para exatamente este problema — escolher um subconjunto
-de nós e a ordem ótima de visitá-los em um único circuito: `CpModel.AddCircuit`. Cada nó
-$a \in N$ recebe um **auto-laço**, um arco $(a,a)$ cujo literal booleano vale 1 quando esse
-nó fica **fora** do circuito:
-
-- mercado $j$: auto-laço amarrado a $\lnot y_j$ — a mesma variável que já decide se o
-  mercado é visitado, sem nenhuma restrição extra de acoplamento;
-- origem: auto-laço amarrado a $\lnot w$, onde $w \Leftrightarrow \sum_j y_j \ge 1$ — a
-  origem só sai do circuito quando nenhum mercado é visitado (lista vazia ou totalmente
-  inatendível).
-
-Os nós sem auto-laço ativo formam, por construção do `AddCircuit`, **um único** circuito
-fechado — não há necessidade de eliminação de subciclos escrita à mão (a restrição de
-Miller–Tucker–Zemlin ou qualquer variante), porque é o próprio `AddCircuit` que garante
-isso internamente. A distância percorrida é $\sum_{a \ne b} \delta_{ab}\, z_{ab}$, e o custo
-logístico do objetivo usa exatamente essa soma, não mais $d_j$.
-
-```mermaid
-graph LR
-    O((origem)) -->|"z"| M1((mercado 1))
-    M1 -->|"z"| M2((mercado 2))
-    M2 -->|"z"| O
-    M3((mercado 3)) -.->|"auto-laço: não visitado"| M3
-
-    style O fill:#eef7e8,stroke:#5a8a4a
-    style M3 fill:#f3f3f3,stroke:#888
-```
-
-**Por que não é o branch-and-bound manual que o `CLAUDE.md` proíbe.** `AddCircuit` é
-resolvida pelo motor de busca do próprio CP-SAT, junto com todas as outras restrições do
-modelo, na mesma resolução que decide $x_{ij}$ e $y_j$ — nenhum código deste projeto
-enumera rotas ou implementa uma heurística de busca. A contribuição do TCC continua sendo a
-formulação, não o algoritmo.
-
-**Por que $\ell_j$ e $d_j$ continuam no documento.** Eles não somem: viram cotas superiores
-usadas para dimensionar $M$ (seção 6.2) e o desempate (seção 8), e são o custo **exato** do
-baseline de mercado único (seção 10), que por definição visita um mercado só — caso em que
-ida e volta e circuito são a mesma coisa.
-
-**O que a correção mudou na prática.** `custo_logistico_centavos`, devolvido pela API, deixa
-de ser a soma de idas e voltas independentes e passa a ser o custo do circuito real — o
-mesmo valor usado para decidir a alocação e o mesmo exibido em `distancia_total_km`. Os dois
-números que antes podiam divergir (o linearizado, usado na decisão, e o real, só exibido)
-agora são o mesmo número, por construção. `docs/contrato-otimizacao.md` documenta o efeito
-no contrato HTTP.
+A lição da versão 1 continua valendo na apresentação: a rota exibida é **um único
+percurso**, e não uma ida e volta por mercado (seção 9).
 
 ## 8. Desempate determinístico em duas fases
 
-Com $\lambda = 0$ o termo logístico some do objetivo, e passam a existir **várias soluções
-de custo idêntico** — por exemplo, comprar um item de preço igual no mercado A ou no B.
-Qual delas o solver devolve seria arbitrário, e a validação por enumeração exaustiva da
-Fase 4 acusaria falsas divergências.
+Com $\lambda = 0$ o termo de conveniência some do objetivo, e passam a existir **várias
+soluções de custo idêntico**, como comprar um item de preço igual no mercado A ou no B. Qual
+delas o solver devolve seria arbitrário, e a validação por enumeração exaustiva da Fase 4
+acusaria falsas divergências.
 
 A resolução tem duas fases:
 
 ```mermaid
 flowchart TD
     A["Instância validada"] --> B["Construir C: pares com preço e estoque suficiente"]
-    B --> C["Criar x[i][j], y[j], u[i], z[a][b]"]
+    B --> C["Criar x[i][j], y[j], u[i]"]
     C --> D["Fase 1: minimizar Z"]
     D --> E{"Solução encontrada?"}
     E -->|"Não"| F["Resposta INVIAVEL com custos zerados"]
     E -->|"Sim"| G["Guardar o ótimo Z*"]
     G --> H["Fase 2: fixar Z = Z* e minimizar o desempate"]
-    H --> I["Ler x[i][j], y[j] e o circuito z[a][b] da solução"]
-    I --> J["Extrair as paradas seguindo os arcos do circuito"]
+    H --> I["Ler x[i][j] e y[j] da solução"]
+    I --> J["Ordenar os mercados: o mais próximo primeiro"]
     J --> K["Calcular o baseline de mercado único"]
     K --> L["Montar a resposta do contrato"]
 
@@ -299,34 +235,51 @@ flowchart TD
     style F fill:#fde8e8,stroke:#c04
 ```
 
-O critério de desempate é lexicográfico — primeiro **menos mercados**, depois **menos
-distância real do circuito** — e é codificado em um único escalar inteiro:
+O critério de desempate é lexicográfico: primeiro **menos mercados**, depois **mercados
+mais próximos da origem**. Ele é codificado em um único escalar inteiro:
 
-$$D = (\textstyle\sum_j d_j + 1) \sum_{j} y_j \; + \; \sum_{a \ne b} \delta_{ab}\, z_{ab}$$
+$$D = \Big(\textstyle\sum_{j \in J} \delta_j + 1\Big) \sum_{j} y_j \; + \; \sum_{j} \delta_j\, y_j$$
 
-O fator multiplicativo $\sum_j d_j + 1$ usa $d_j$ (a ida e volta independente, cota superior
-da seção 7.1), não a distância real — mas o desempate continua correto: a distância real do
-circuito nunca excede $\sum_j d_j$ (mesma desigualdade triangular), então a segunda parcela
-é sempre menor que o fator multiplicativo, e o primeiro critério domina o segundo sem
-ambiguidade. Isso evita duas chamadas sucessivas ao solver para os dois critérios.
+A segunda parcela nunca alcança o fator multiplicativo, então o primeiro critério domina o
+segundo sem ambiguidade. Isso evita duas chamadas sucessivas ao solver para os dois
+critérios.
 
-O valor reportado em `valor_objetivo_centavos` é sempre o $Z^*$ da primeira fase: a
-segunda apenas escolhe, **entre as soluções já ótimas**, a mais conveniente.
+A distância entra aqui **só como desempate**. Ela nunca muda o valor ótimo: a fase 2 apenas
+escolhe, **entre as soluções já ótimas**, a que fica mais perto de casa. O valor reportado
+em `valor_objetivo_centavos` é sempre o $Z^*$ da primeira fase.
 
-## 9. Etapas fora do modelo inteiro
+## 9. Ordem de visita: o mais próximo primeiro
 
-Uma única coisa é calculada **depois** do solve — a ordenação da rota deixou de ser uma
-delas, porque agora é o próprio `AddCircuit` (seção 7.2) que decide a ordem de visita
-**dentro** do modelo:
+O modelo decide **quais** mercados visitar. A ordem de visita é montada depois do solve, em
+[`rota.py`](../app/otimizacao/rota.py), pela regra do **vizinho mais próximo**:
 
-| Etapa | Onde | Método |
+1. o usuário sai da origem **uma única vez**;
+2. a próxima parada é sempre o mercado ainda não visitado mais próximo **do ponto onde o
+   usuário está**, e não da origem;
+3. depois do último mercado, ele volta para a origem.
+
+É o critério que as pessoas usam na prática ao fazer a feira. Por isso é o que a
+recomendação reproduz. Não é um Caixeiro-Viajante: como a distância não é precificada, não
+há por que otimizar o percurso, só apresentá-lo numa ordem natural. Empates de distância são
+resolvidos pelo menor `mercado_id`, para que a saída seja determinística.
+
+```mermaid
+graph LR
+    O((origem)) -->|"1º: o mais perto de casa"| M1((mercado A))
+    M1 -->|"2º: o mais perto de A"| M2((mercado B))
+    M2 -->|"volta só no fim"| O
+```
+
+`distancia_total_km` é o comprimento desse percurso fechado (origem → paradas → origem), e
+`distancia_do_anterior_km` é o trecho de cada parada. Os dois são informativos.
+
+| Etapa fora do modelo inteiro | Onde | Método |
 |---|---|---|
+| Ordem de visita | [`rota.py`](../app/otimizacao/rota.py) | vizinho mais próximo a partir da origem |
 | Baseline de economia | [`economia.py`](../app/otimizacao/economia.py) | comparação com o melhor mercado único, em dois níveis |
 
-A extração das paradas em [`rota.py`](../app/otimizacao/rota.py) não é mais uma etapa fora
-do modelo: é leitura direta da solução do circuito, sem nenhuma busca própria (ver seção
-7.2). O baseline de economia continua fora do modelo inteiro e não influencia a decisão de
-**onde comprar** — ele apresenta e contextualiza uma decisão já tomada.
+Nenhuma das duas influencia a decisão de **onde comprar**: elas apresentam e contextualizam
+uma decisão já tomada.
 
 ## 10. Baseline de economia
 
@@ -349,33 +302,31 @@ flowchart TD
 
 Na comparação parcial, o lado da recomendação é **recalculado sobre o mesmo subconjunto**
 de itens que o mercado baseline cobre. Sem isso, compararíamos uma cesta cheia com uma
-cesta menor e a economia seria superestimada — exatamente o tipo de número que não
-sobrevive a uma banca.
+cesta menor e a economia seria superestimada, exatamente o tipo de número que não sobrevive
+a uma banca.
 
-Os dois lados incluem a parcela logística: um mercado único também custa uma visita e um
-deslocamento. A régua é a mesma nos dois lados. Do lado da recomendação, quando a
-comparação cobre exatamente os mercados de toda a recomendação (o caso comum, completo), a
-parcela logística é o custo real do circuito — o mesmo `custo_logistico_centavos` da
-resposta. Na comparação **parcial**, restrita a um subconjunto de mercados, não há como
-repartir o custo de um circuito compartilhado entre paradas; a parcela logística volta a
-ser a soma de $\ell_j$ (ida e volta isolada) dos mercados desse subconjunto — uma
-aproximação conservadora, que nunca superestima a economia relatada.
+A comparação é **só do que se paga no caixa**: a soma de $c_{ij}$ de cada lado. O custo
+das paradas ($f$) serve ao modelo para pesar conveniência, mas ninguém o paga no mercado,
+então fica de fora. Na comparação completa, a economia nunca é negativa. A recomendação
+satisfaz $\sum c + \lambda f n \le \sum c^{\text{único}} + \lambda f$ com $n \ge 1$, logo
+$\sum c \le \sum c^{\text{único}}$.
+
+O esforço é mostrado à parte, em quilômetros: a resposta traz a ida e volta até o mercado
+único ($2\delta_j$), para comparar com o percurso do roteiro. A distância continua sem
+preço, e é o usuário quem julga se a economia compensa os quilômetros a mais.
 
 ## 11. Complexidade e escala
 
-O modelo tem $|C| + |J| + |I| + |N|(|N|-1)$ variáveis binárias — as últimas são os arcos
-$z_{ab}$, com $|N| = |J| + 1$ — e $|I| + |C|$ restrições lineares mais uma restrição de
-circuito. No teto da PoC (20 itens × 8 mercados, $|N| = 9$) isso são no máximo $188 + 72 =
-260$ variáveis — ainda uma instância que o CP-SAT resolve na casa dos milissegundos, como
-registram os tempos em [`validacao-e-testes.md`](validacao-e-testes.md).
+O modelo tem $|C| + |J| + |I|$ variáveis binárias e $|I| + |C|$ restrições lineares. No
+teto da PoC (20 itens × 30 mercados) isso dá no máximo $600 + 30 + 20 = 650$ variáveis. O
+catálogo real (13 itens × 28 supermercados) fica bem abaixo disso, e o CP-SAT resolve essa
+instância na casa dos milissegundos, como registram os tempos em
+[`validacao-e-testes.md`](validacao-e-testes.md).
 
-O problema de alocação é NP-difícil no caso geral (generaliza o *Uncapacitated Facility
-Location*) e a seleção de rota embutida generaliza o Caixeiro Viajante — também NP-difícil
-—, mas a PoC opera muito abaixo do ponto em que isso importa: $|N| = 9$ é trivial para
-`AddCircuit`. **A contribuição do TCC está na formulação e na escolha dos pesos, não no
-algoritmo de busca** — daí a exigência do `CLAUDE.md` de usar CP-SAT e nunca escrever um
-branch-and-bound manual, e daí também `AddCircuit` em vez de uma heurística de rota escrita
-à mão.
+O problema de alocação é NP-difícil no caso geral, porque generaliza o *Uncapacitated
+Facility Location*. A PoC, porém, opera muito abaixo do ponto em que isso importa. **A
+contribuição do TCC está na formulação e na escolha dos pesos, não no algoritmo de busca.**
+Daí a exigência do `CLAUDE.md` de usar CP-SAT e nunca escrever um branch-and-bound manual.
 
 ## 12. Rastreamento entre a notação e o código
 
@@ -384,16 +335,13 @@ branch-and-bound manual, e daí também `AddCircuit` em vez de uma heurística d
 | $x_{ij}$ | `comprar[(indice_item, mercado_id)]` | `modelo_cpsat.py` |
 | $y_j$ | `visitar[mercado_id]` | `modelo_cpsat.py` |
 | $u_i$ | `nao_atendido[indice_item]` | `modelo_cpsat.py` |
-| $z_{ab}$ | `arco[(a, b)]` | `modelo_cpsat.py` |
-| $w$ | `algum_mercado_visitado` | `modelo_cpsat.py` |
 | $c_{ij}$ | `_ParCandidato.custo_centavos` | `modelo_cpsat.py` |
-| $\delta_{ab}$ | `_Instancia.matriz_metros` | `modelo_cpsat.py` (via `matriz_de_distancias_metros`, `logistica.py`) |
-| $g_{ab}$ | `_Instancia.custo_arco_centavos` | `modelo_cpsat.py` |
-| $d_j$, $\ell_j$ | `_Instancia.metros_ida_volta`, `_Instancia.custo_logistico_centavos` | `modelo_cpsat.py` |
+| $f$ | `custo_por_visita_centavos` | `esquemas.py` / `configuracao.py` |
+| $\delta_j$ | `_Instancia.metros_da_origem` | `modelo_cpsat.py` (via `distancia_em_linha_reta_metros`, `logistica.py`) |
 | $\Lambda$ | `_Instancia.peso_escalado` | `modelo_cpsat.py` |
 | $M$ | `_calcular_penalidade` | `modelo_cpsat.py` |
 | $D$ | `desempate_lexicografico` | `modelo_cpsat.py` |
-| extração das paradas | `extrair_rota` | `rota.py` |
+| ordem de visita | `ordenar_pelo_mais_proximo` | `rota.py` |
 
 > Ao alterar qualquer coisa deste documento, atualize também a **seção 5 do `CLAUDE.md`** e
 > o capítulo de metodologia do TCC. É uma regra do próprio `CLAUDE.md` (seção 6).

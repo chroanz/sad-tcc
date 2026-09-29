@@ -62,10 +62,11 @@ subida da API idempotente — reiniciar o container não recria nem duplica nada
 | `001_esquema_inicial.sql` | tabelas, CHECKs, índices, comentários e a view `precos_vigentes` |
 | `002_dados_semente.sql` | dados **fictícios** de Juazeiro do Norte para a PoC rodar ponta a ponta |
 | `003_raio_da_recomendacao.sql` | `recomendacoes.parametro_raio_km`, para o histórico saber qual recorte de mercados produziu cada resultado |
+| `004_catalogo_dieese.sql` | **gerada** por `dados/gerar_catalogo_dieese.py`: remove o catálogo fictício de 002 e carrega a base da cesta básica do DIEESE (28 supermercados fictícios em Juazeiro do Norte, um por cidade do CSV, 13 produtos, 2 marcas fictícias cada) |
 
 ## Como adicionar uma migration
 
-1. Crie `migracoes/003_descricao_curta.sql`. O prefixo numérico define a ordem.
+1. Crie `migracoes/005_descricao_curta.sql`. O prefixo numérico define a ordem.
 2. Escreva SQL idempotente (`IF NOT EXISTS`, `ON CONFLICT DO NOTHING`) — é barato e evita
    surpresa em ambiente que já tenha parte do esquema.
 3. **Não** inclua `BEGIN`/`COMMIT`.
@@ -97,5 +98,8 @@ Cada coleta é um `INSERT`. Corrigir um preço errado também é um `INSERT`, co
 enquanto a tabela preserva a série inteira — que é o que permite analisar variação de preço
 ao longo do tempo no capítulo de resultados.
 
-É também o mecanismo de substituição da semente fictícia: ao inserir a coleta real de
+> A semente fictícia não foi substituída por esse mecanismo: a migration 004 a removeu e
+> carregou a base do DIEESE (ver `docs/dados-e-coleta.md`).
+
+Era também o mecanismo previsto para substituir a semente fictícia: ao inserir a coleta real de
 Juazeiro do Norte com data posterior, ela passa a prevalecer automaticamente, sem `DELETE`.

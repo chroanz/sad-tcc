@@ -1,250 +1,113 @@
-# Dados e coleta de preços
+# Dados: a base da cesta básica do DIEESE
 
-A coleta manual de preços é o **maior risco de atraso do projeto**, segundo o
-`plano_desenvolvimento.md`. Este documento define o protocolo de coleta, o pipeline que
-transforma a planilha em dados no banco, e descreve a base fictícia que existe hoje.
+A PoC **não coleta preços em supermercados**. O escopo geográfico é **Juazeiro do
+Norte/CE**, e o catálogo inteiro (supermercados, produtos, marcas e preços) vem da Pesquisa
+Nacional da Cesta Básica de Alimentos do DIEESE, no arquivo `cesta_agosto.csv`, na raiz do
+projeto. É uma decisão de escopo do autor, tomada em
+2026-09-28 para simplificar a prova de conceito, e substitui o protocolo de coleta manual
+em Juazeiro do Norte.
 
 ## Pipeline
 
 ```mermaid
 flowchart LR
-    A["Visita ao mercado<br/>ou app do mercado"] --> B["Preenche o CSV<br/>dados/coleta/"]
-    B --> C["gerar_insercoes.py --verificar"]
-    C --> D{"Todas as linhas válidas?"}
-    D -->|"Não"| E["Erros com linha e coluna"]
-    E --> B
-    D -->|"Sim"| F["gerar_insercoes.py --saida coleta.sql"]
-    F --> G["Revisão do SQL"]
-    G --> H["psql ou nova migration"]
-    H --> I[("precos<br/>append-only")]
-    I --> J["view precos_vigentes"]
-    J --> K["Payload de otimização"]
-
-    style I fill:#e8f0fe,stroke:#4a6fa5
-    style E fill:#fdecea,stroke:#b3261e
+    A["cesta_agosto.csv<br/>(DIEESE, agosto/2026)"] --> B["dados/gerar_catalogo_dieese.py"]
+    B --> C["api/migracoes/004_catalogo_dieese.sql"]
+    C --> D[("PostgreSQL")]
+    D --> E["view precos_vigentes"]
+    E --> F["candidatos do otimizador"]
 ```
 
-O script gera **texto SQL** e nunca escreve no banco por conta própria. A revisão manual
-entre a geração e a aplicação é deliberada: uma coleta com erro de digitação em massa é
-mais fácil de descartar antes de entrar na série histórica do que depois.
-
-## Protocolo de coleta
-
-| Item | Definição |
-|---|---|
-| Frequência | **semanal**, sempre no mesmo dia da semana |
-| Escopo | os 6 mercados de Juazeiro do Norte, dentro do raio de ~7 km do centro |
-| Cesta | 18 produtos, 2 marcas cada |
-| Fonte | preço de gôndola na visita presencial, ou app oficial do mercado |
-| Registro | uma linha por (mercado, marca), inclusive quando o produto está em falta |
-
-Regras que evitam viés nos dados:
-
-- **Produto em falta registra-se com `quantidade_disponivel = 0`**, nunca omitindo a
-  linha. Omitir faria o sistema tratar "em falta" como "não vendemos", que são coisas
-  diferentes: a primeira é temporária e a segunda é estrutural.
-- **Promoções entram pelo preço efetivamente pago**, com a observação registrada à parte.
-  Promoção condicionada a cartão de fidelidade **não** entra: o modelo assume que qualquer
-  pessoa consegue o preço registrado.
-- **Estoque é estimado por observação** (aproximadamente quantas unidades há na gôndola).
-  Não precisa de precisão: a restrição do modelo é `estoque >= quantidade pedida`, e o que
-  importa é distinguir "tem bastante" de "tem pouco" e de "não tem".
-- **Nomes de mercado, produto e marca precisam bater exatamente** com os cadastrados. O
-  script resolve as chaves estrangeiras por nome; uma diferença de grafia produz um INSERT
-  que não insere nada.
-
-## O arquivo de coleta
-
-Formato em `dados/coleta/`, cabeçalho obrigatório:
-
-```
-mercado,produto,marca,preco,unidade,quantidade_disponivel,coletado_em
-```
-
-| Coluna | Tipo | Obrigatório | Exemplo | Validação |
-|---|---|---|---|---|
-| `mercado` | texto | sim | `Atacadão do Limoeiro` | não vazio; precisa existir em `mercados.nome` |
-| `produto` | texto | sim | `Arroz` | não vazio; precisa existir em `produtos.nome` |
-| `marca` | texto | sim | `Tio João 5kg` | não vazio; precisa existir em `marcas.nome` |
-| `preco` | decimal | sim | `22.90` | numérico e maior que zero; aceita vírgula decimal |
-| `unidade` | texto | sim | `un` | um de `kg`, `g`, `L`, `ml`, `un` |
-| `quantidade_disponivel` | decimal | sim | `35` | numérico e não negativo; `0` significa em falta |
-| `coletado_em` | data ISO | sim | `2026-09-01` | formato `AAAA-MM-DD` |
-
-`dados/coleta/modelo_coleta.csv` é a planilha em branco com duas linhas de exemplo.
-
-## Comandos
+O gerador usa só a biblioteca padrão e nunca escreve no banco: ele produz o SQL, que a API
+aplica como migration na subida.
 
 ```bash
-# Valida sem gerar nada; aponta linha e coluna de cada problema
-python dados/gerar_insercoes.py --entrada dados/coleta/coleta_2026-09-08.csv --verificar
-
-# Gera o SQL depois que a validação passa
-python dados/gerar_insercoes.py --entrada dados/coleta/coleta_2026-09-08.csv --saida coleta.sql
+python3 dados/gerar_catalogo_dieese.py --entrada cesta_agosto.csv \
+    --saida api/migracoes/004_catalogo_dieese.sql
 ```
 
-O script sai com código 1 em caso de erro, o que permite usá-lo como portão automatizado.
-Exemplo de saída de erro:
+## Como o CSV vira catálogo
 
-```
-5 problema(s) encontrado(s):
-  linha 2, coluna mercado: valor obrigatorio vazio
-  linha 2, coluna preco: preco nao numerico: 'abc'
-  linha 2, coluna unidade: unidade 'litro' fora da lista permitida ['kg', 'g', 'L', 'ml', 'un']
-  linha 2, coluna quantidade_disponivel: quantidade nao pode ser negativa
-  linha 2, coluna coletado_em: data invalida '01-09-2026'; use o formato AAAA-MM-DD
-```
+O CSV tem uma linha por cidade e uma coluna por produto, com o preço médio em reais
+(`"45,31"`) ou `-` quando a cidade não tem aquele produto na pesquisa.
 
-Cada INSERT gerado traz um `WHERE NOT EXISTS` sobre o par (marca, mercado, `coletado_em`):
-aplicar o mesmo arquivo duas vezes não duplica observações.
+| Conceito do sistema | De onde vem |
+|---|---|
+| **Supermercado** | um supermercado **fictício em Juazeiro do Norte** para cada nome de cidade do CSV (`Supermercado Fortaleza`), que pratica os preços DIEESE daquela cidade. A localização é fictícia: espiral determinística (de Vogel) num raio de 6 km do centro, na ordem do CSV, sem relação com os preços |
+| **Produto** | cada coluna de produto (13 no total). A coluna "Total da Cesta" é ignorada |
+| **Marca** | duas marcas **fictícias** por produto, porque a base não tem marca |
+| **Preço** | preço DIEESE +8% na primeira marca, −8% na segunda. A média das duas é o preço publicado |
+| **Disponibilidade** | célula preenchida = disponível; `-` = sem preço naquele supermercado |
+| **Estoque** | a base não informa estoque; todo preço entra com 1000 unidades |
+| **Data** | `coletado_em` = 2026-08-31 (mês de referência da pesquisa) |
+
+São 28 supermercados. Macaé aparece no CSV com todas as células `-`: o "Supermercado Macaé"
+existe, mas não oferta nada, e por isso nunca é escolhido.
+
+### Produtos e unidades
+
+A unidade é aquela a que o preço do DIEESE se refere. A quantidade de um item da lista é
+lida nessa mesma unidade: 2 de "Carne bovina" são 2 kg.
+
+| Coluna no CSV | Produto | Categoria | Unidade | Marcas fictícias |
+|---|---|---|---|---|
+| Carne | Carne bovina | Açougue | kg | Boi Nobre, Corte Bom |
+| Leite | Leite integral | Laticínios | L | Vale Verde, Leiteria Serrana |
+| Feijão | Feijão | Mercearia | kg | Grão de Ouro, Sertão Forte |
+| Arroz | Arroz | Mercearia | kg | Campo Dourado, Arrozal |
+| Farinha | Farinha | Mercearia | kg | Moinho Real, Farinheira do Vale |
+| Batata | Batata | Hortifruti | kg | Horta Viva, Terra Boa |
+| Tomate | Tomate | Hortifruti | kg | Horta Viva, Terra Boa |
+| Pão | Pão francês | Padaria | kg | Trigal, Forno Bom |
+| Café | Café em pó | Mercearia | kg | Serra Alta, Grão Torrado |
+| Banana | Banana (dúzia) | Hortifruti | un (dúzia) | Horta Viva, Terra Boa |
+| Açúcar | Açúcar | Mercearia | kg | Doce Lar, Canavial |
+| Óleo | Óleo de soja (900 ml) | Mercearia | un (lata de 900 ml) | Soja Pura, Óleo Bom |
+| Manteiga | Manteiga | Laticínios | kg | Vale Verde, Leiteria Serrana |
+
+Premissas a declarar no texto do TCC:
+
+- a banana é tratada como preço por **dúzia**, e o óleo como preço por **lata de 900 ml**;
+- a "Farinha" do DIEESE é de mandioca no Norte e no Nordeste e de trigo no Centro-Sul, mas
+  aparece como um produto só.
+
+## Características do conjunto
+
+- **Preços reais, dispersão real.** Nenhum preço é inventado; os supermercados, suas
+  localizações e as marcas são fictícios.
+- **Indisponibilidade real.** A Batata não é pesquisada nas 16 capitais do Norte e do
+  Nordeste, então os 16 supermercados homônimos não a vendem, e o Supermercado Macaé não
+  vende nada. Isso restringe a escolha de onde comprar batata, com dado real. Como os
+  supermercados mais próximos do centro vendem batata, o item só fica sem atendimento se o
+  recorte alcançar apenas supermercados do Norte e do Nordeste.
+- **Nenhum supermercado é o mais barato em tudo.** Com o catálogo inteiro, o perfil
+  econômico distribui os 13 itens por 11 supermercados.
+- **Escala de cidade.** Os supermercados ficam a no máximo 6 km do centro, dentro do
+  recorte de ~7 km do plano. Os raios oferecidos são 2, 5, 7 e 10 km, e o padrão (7 km)
+  alcança todos.
 
 ## Histórico append-only
 
-```mermaid
-flowchart TD
-    subgraph Tabela["Tabela precos (nunca sofre UPDATE)"]
-        A1["Arroz Tio João · Centro<br/>25/08 · R$ 26,50"]
-        A2["Arroz Tio João · Centro<br/>01/09 · R$ 26,90"]
-        A3["Arroz Tio João · Centro<br/>08/09 · R$ 27,40"]
-    end
+`precos` continua **append-only**. A leitura passa pela view `precos_vigentes`, que
+seleciona o snapshot mais recente de cada par (marca, mercado). Uma pesquisa de outro mês
+entra como novos INSERTs com `coletado_em` posterior, gerados a partir do novo CSV.
 
-    Tabela --> B["view precos_vigentes<br/>DISTINCT ON (marca_id, mercado_id)<br/>ORDER BY coletado_em DESC"]
-    B --> C["Só o snapshot de 08/09<br/>alimenta a otimização"]
-    Tabela --> D["Série completa<br/>análise de variação de preço<br/>capítulo de resultados"]
+A migration 004 é a única exceção: ela **remove** o catálogo fictício de `002_dados_semente.sql`
+(mercados de Juazeiro do Norte e preços inventados), junto com os itens de lista e as
+recomendações que dependiam dele. As contas de usuário são preservadas. O usuário de
+demonstração (`demo@exemplo.com` / `demo1234`) ganha a lista "Cesta básica do mês", com os
+13 produtos e marca livre.
 
-    style B fill:#e8f0fe,stroke:#4a6fa5
-```
+## Verificações
 
-Corrigir um preço errado também é um `INSERT`, com `coletado_em` posterior — nunca um
-`UPDATE`. É esse mecanismo que permite **substituir a base fictícia pela coleta real sem
-apagar nada**: basta inserir a coleta real com data posterior, e ela passa a prevalecer.
-
-Cuidado prático: a view não desempata `coletado_em` idêntico. Evite registrar duas coletas
-do mesmo par (marca, mercado) com exatamente o mesmo instante.
-
-## A base de semente atual — FICTÍCIA
-
-`api/migracoes/002_dados_semente.sql` carrega dados **inventados**, para o sistema rodar
-ponta a ponta antes de a coleta de campo terminar. Nenhum preço foi observado em loja e
-nenhum estabelecimento real é representado: os nomes são placeholders.
-
-**Nenhum resultado do capítulo de resultados do TCC pode se basear nesses valores.**
-
-### Mercados
-
-| Mercado | Bairro | Distância aproximada do centro | Perfil de preço |
-|---|---|---|---|
-| Mercado Central do Juazeiro | Centro | ~0,2 km | mais caro |
-| Supermercado Bom Preço Triângulo | Triângulo | ~1,1 km | caro |
-| Supermercado Vila Nova Salesianos | Salesianos | ~1,5 km | intermediário |
-| Hipermercado Lagoa Seca | Lagoa Seca | ~2,9 km | intermediário |
-| Atacadão do Limoeiro | Limoeiro | ~5,1 km | barato |
-| Supermercado Economia Muriti | Muriti | ~6,9 km | mais barato |
-
-O gradiente **quanto mais longe, mais barato** é intencional: é ele que cria o trade-off
-custo × conveniência que a função objetivo resolve. Sem esse gradiente, o problema seria
-trivial e o capítulo de resultados não teria o que mostrar.
-
-### Cesta
-
-18 produtos de cesta básica (arroz, feijão, óleo, açúcar, café, leite, farinha, macarrão,
-sal, molho de tomate, biscoito, margarina, ovos, sabonete, papel higiênico, detergente,
-carne bovina, banana), com 2 marcas cada — 36 marcas ao todo — e 218 snapshots de preço
-distribuídos em duas datas de coleta (25/08 e 01/09).
-
-### Características intencionais
-
-Cada uma existe para exercitar um caminho específico do sistema:
-
-| Característica | O que exercita |
-|---|---|
-| Nenhum mercado é o mais barato em tudo | a decisão de dividir a compra; sem isso o ótimo seria sempre um mercado só |
-| Dispersão de preço entre 10% e 30% na mesma marca | faixa realista; diferenças absurdas tornariam a otimização trivial |
-| Mercados baratos mais distantes | o trade-off entre economia no item e custo do deslocamento |
-| Nenhum mercado cobre sozinho os 18 produtos | o caminho de **comparação parcial** no baseline de economia |
-| "Carne bovina" só em 2 mercados e "Banana prata" em 3 | cobertura desigual, que força visitas específicas |
-| Duas marcas com `quantidade_disponivel = 0` | motivo `SEM_CANDIDATO_COM_ESTOQUE` |
-| Duas marcas com estoque de 1 e 2 unidades | a restrição de estoque suficiente quando a quantidade pedida é maior |
-| Duas datas de coleta para parte dos preços | a view `precos_vigentes` e o histórico append-only |
-
-### Usuário de demonstração
-
-| Campo | Valor |
-|---|---|
-| E-mail | `demo@exemplo.com` |
-| Senha | `demo1234` |
-
-O hash é bcrypt de custo 10 real, conferido contra a senha correta e contra uma senha
-errada. Vêm junto **duas listas de exemplo**: uma cesta básica completa e uma lista curta,
-esta última com ao menos um item de marca livre (`marca_id` nulo).
-
-Para regerar o hash:
-
-```bash
-python -c "import bcrypt; print(bcrypt.hashpw(b'demo1234', bcrypt.gensalt(rounds=10, prefix=b'2a')).decode())"
-```
-
-## Substituindo pela coleta real
-
-1. Confira que os 6 mercados reais estão em `mercados` com nome, endereço e coordenadas
-   corretos (use `POST /api/v1/mercados` ou uma migration).
-2. Confira produtos e marcas — os nomes precisam bater com o que vai no CSV.
-3. Preencha o CSV da semana, valide e gere o SQL.
-4. Aplique. Como `coletado_em` é posterior ao da semente, a coleta real passa a prevalecer
-   automaticamente em `precos_vigentes`.
-5. Só então rode os experimentos da Fase 4. Antes disso, qualquer número é fictício.
-
-## Verificações de qualidade dos dados
-
-Consultas para rodar depois de cada coleta:
+Depois de aplicar as migrations:
 
 ```sql
--- Preços fora de faixa plausível (possível erro de digitação)
-SELECT me.nome, ma.nome, pv.preco
-  FROM precos_vigentes pv
-  JOIN marcas ma ON ma.id = pv.marca_id
-  JOIN mercados me ON me.id = pv.mercado_id
- WHERE pv.preco < 1 OR pv.preco > 200;
-
--- Coletas desatualizadas: pares sem observação nos últimos 10 dias
-SELECT me.nome, ma.nome, pv.coletado_em
-  FROM precos_vigentes pv
-  JOIN marcas ma ON ma.id = pv.marca_id
-  JOIN mercados me ON me.id = pv.mercado_id
- WHERE pv.coletado_em < now() - interval '10 days'
- ORDER BY pv.coletado_em;
-
--- Cobertura por mercado: quantas das 36 marcas cada um tem
-SELECT me.nome, count(*) AS marcas_cobertas
-  FROM precos_vigentes pv
-  JOIN mercados me ON me.id = pv.mercado_id
- GROUP BY me.nome
- ORDER BY marcas_cobertas DESC;
-
--- Produtos sem nenhuma oferta: virariam itens não atendidos
-SELECT p.nome
-  FROM produtos p
- WHERE NOT EXISTS (
-       SELECT 1 FROM precos_vigentes pv
-         JOIN marcas ma ON ma.id = pv.marca_id
-        WHERE ma.produto_id = p.id
- );
-
--- Variação de preço de uma marca ao longo do tempo, num mercado
-SELECT p.coletado_em, p.preco
-  FROM precos p
-  JOIN marcas ma ON ma.id = p.marca_id
- WHERE ma.nome = 'Tio João 5kg' AND p.mercado_id = 1
- ORDER BY p.coletado_em;
+-- esperado: 28 mercados, 13 produtos, 26 marcas, 670 preços
+SELECT (SELECT count(*) FROM mercados) AS mercados,
+       (SELECT count(*) FROM produtos) AS produtos,
+       (SELECT count(*) FROM marcas)   AS marcas,
+       (SELECT count(*) FROM precos)   AS precos;
 ```
 
-| Risco | Como detectar | Efeito se passar |
-|---|---|---|
-| Preço digitado errado | primeira consulta | recomendação absurda, difícil de perceber |
-| Coleta atrasada | segunda consulta | decisão tomada sobre preço velho |
-| Cobertura insuficiente | terceira e quarta | muitos itens não atendidos |
-| Nome divergente | INSERT que insere 0 linhas | dado some silenciosamente |
-
-A última é a mais traiçoeira: como o script resolve chaves por nome, um `WHERE` que não
-casa gera um comando válido que não insere nada. Depois de aplicar uma coleta, confira a
-contagem de linhas inseridas contra a contagem de linhas do CSV.
+670 = 2 marcas × (27 supermercados com preços × 13 produtos − 16 células `-`).

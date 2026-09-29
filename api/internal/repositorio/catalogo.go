@@ -150,19 +150,21 @@ func (r *Repositorio) lerMercados(
 // passa a ser consequência do raio escolhido, e não uma parede que derruba a
 // requisição quando o cadastro cresce.
 //
-// A fórmula é a mesma haversine do otimizador, escrita em SQL — os dois lados
-// precisam concordar sobre o que está dentro do raio.
+// A fórmula é a mesma linha reta do otimizador, escrita em SQL — os dois lados
+// precisam concordar sobre o que está dentro do raio: as diferenças de latitude
+// e longitude viram quilômetros (a longitude encolhida pelo cosseno da latitude
+// média) e a distância é a hipotenusa.
 func (r *Repositorio) ListarMercadosProximos(
 	ctx context.Context, latitude, longitude, raioKm float64,
 ) ([]dominio.Mercado, error) {
 	const consulta = `
 		SELECT id, nome, latitude::float8, longitude::float8, endereco, criado_em
 		  FROM mercados
-		 WHERE 2 * 6371.0088 * asin(sqrt(
-		           power(sin(radians(latitude::float8 - $1) / 2), 2)
-		         + cos(radians($1)) * cos(radians(latitude::float8))
-		         * power(sin(radians(longitude::float8 - $2) / 2), 2)
-		       )) <= $3
+		 WHERE 6371.0088 * sqrt(
+		           power(radians(latitude::float8 - $1), 2)
+		         + power(radians(longitude::float8 - $2)
+		                 * cos(radians((latitude::float8 + $1) / 2)), 2)
+		       ) <= $3
 		 ORDER BY nome`
 
 	return r.lerMercados(ctx, consulta, latitude, longitude, raioKm)

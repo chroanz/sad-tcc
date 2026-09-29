@@ -40,9 +40,9 @@ cd modelo
 
 | Arquivo | O que cobre |
 |---|---|
-| `test_logistica.py` | haversine contra distâncias geodésicas conhecidas, simetria, ida e volta, e a verificação de que os 6 mercados do recorte estão dentro do raio declarado de Juazeiro do Norte |
-| `test_modelo_cpsat.py` | o núcleo: trade-offs com ótimo calculado à mão, efeito do peso, estoque, casos de borda, determinismo, consistência dos custos e o custo logístico real do circuito (não mais ida e volta independente) |
-| `test_rota.py` | extração das paradas a partir de um circuito já resolvido |
+| `test_logistica.py` | distância em linha reta: graus em metros, encolhimento da longitude pela latitude, simetria e ordem de grandeza Juazeiro–Fortaleza |
+| `test_modelo_cpsat.py` | o núcleo: trade-offs com ótimo calculado à mão, efeito do peso, estoque, casos de borda, determinismo, consistência dos custos, distância fora do objetivo, desempate pelo mais próximo e a rota num único percurso |
+| `test_rota.py` | ordem de visita pelo vizinho mais próximo: a partir do ponto atual, volta à origem só no fim, desempate por identificador |
 | `test_economia.py` | os dois níveis do baseline de mercado único |
 | `test_api.py` | o contrato na fronteira HTTP: forma da resposta, as 5 regras de validação (422) e o teto da PoC |
 
@@ -101,8 +101,8 @@ por força bruta e compara com o CP-SAT.
 
 ### Por que a implementação é independente
 
-O script **reescreve do zero** o haversine, o custo por par item-mercado, o custo logístico
-e a função objetivo. Ele importa de `app/` apenas a função que está sob teste
+O script **reescreve do zero** o custo por par item-mercado, o custo das paradas e a função
+objetivo. A distância não entra no objetivo, então não precisa ser reimplementada. Ele importa de `app/` apenas a função que está sob teste
 (`resolver_alocacao_de_compras`) e o esquema de entrada.
 
 Isso não é preciosismo: se os dois lados compartilhassem a aritmética, um erro na fórmula
@@ -144,7 +144,7 @@ acabaria abandonando um item atendível para economizar uma visita.
 | Parâmetro | Faixa |
 |---|---|
 | Itens | 2 a 5 |
-| Mercados | 2 a 4, sorteados entre os 6 do recorte de Juazeiro do Norte |
+| Mercados | 2 a 4, sorteados entre 6 supermercados do catálogo em Juazeiro do Norte |
 | Peso de conveniência | 0,0 / 0,5 / 1,0 / 3,0 |
 | Preço unitário | R$ 3,00 a R$ 40,00, com variação de −20% a +30% entre mercados |
 | Cobertura | 15% de chance de o mercado não vender o item |
@@ -164,13 +164,11 @@ que ela serve de referência confiável.
 | Instâncias avaliadas | 200 (semente 2026) |
 | Alocações avaliadas ao todo | 5.843 |
 | Taxa de convergência | 100% |
-| Tempo total da enumeração | 0,0303 s |
-| Tempo total do CP-SAT | 1,7957 s |
+| Tempo total da enumeração | 0,0094 s |
+| Tempo total do CP-SAT | 0,9317 s |
 
-O CP-SAT ficou mais lento que antes da correção (era 0,6967 s) porque `AddCircuit`
-acrescenta variáveis de arco e uma restrição de circuito a cada uma das duas fases do
-solve. Ainda assim, a casa de milissegundos por instância continua desprezível frente ao
-tempo de resposta esperado da API.
+O CP-SAT ficou mais rápido que na versão com circuito (1,7957 s): sem as variáveis de arco
+e sem `AddCircuit`, cada fase do solve tem só as variáveis de alocação e visita.
 
 O relatório completo, com uma linha por instância, está em
 [`../../docs/relatorio-validacao.md`](../../docs/relatorio-validacao.md) e é regerado por
@@ -178,13 +176,13 @@ comando — ele não é escrito à mão.
 
 O CP-SAT ser **mais lento** que a força bruta nessas instâncias é esperado e vale
 comentário na defesa: montar o modelo tem custo fixo, que só se paga quando o espaço de
-busca cresce. Em 20 itens × 8 mercados a enumeração avaliaria até $8^{20} \approx 10^{18}$
+busca cresce. Em 20 itens × 30 mercados a enumeração avaliaria até $30^{20} \approx 10^{29}$
 combinações — inviável — enquanto o CP-SAT continua na casa dos milissegundos.
 
 ## 4. Portões de qualidade
 
 ```bash
-.venv/Scripts/python -m pytest testes -q                       # 49 testes
+.venv/Scripts/python -m pytest testes -q                       # 54 testes
 .venv/Scripts/python -m black --line-length 100 --check .      # formatação
 .venv/Scripts/python -m ruff check .                           # lint
 .venv/Scripts/python scripts/validacao_exaustiva.py --repeticoes 60   # sai 1 se divergir
@@ -197,11 +195,11 @@ Os quatro fazem parte da Definition of Done do projeto (ver
 
 Estes itens dependem de dados reais e ficam a cargo do autor:
 
-- [ ] Repetir a validação exaustiva com a **coleta real** de Juazeiro do Norte no lugar da
-      semente fictícia.
+- [ ] Repetir a validação com instâncias montadas a partir do **catálogo DIEESE** (preços
+      reais por cidade), além das sintéticas.
 - [ ] Montar 2 ou 3 cenários de compra representativos (cesta básica completa) com cálculo
       manual documentado, e comparar com a recomendação do sistema.
-- [ ] Medir o tempo de resposta com a instância típica (18 × 6) e confrontar com o RNF de
-      tempo do otimizador.
+- [ ] Medir o tempo de resposta com a instância típica (13 itens × 28 supermercados) e
+      confrontar com o RNF de tempo do otimizador.
 - [ ] Rodar a mesma lista sob os três perfis e tabelar custo × nº de mercados × distância —
       é a evidência empírica do trade-off que o trabalho propõe resolver.

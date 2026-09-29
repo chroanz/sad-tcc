@@ -15,7 +15,9 @@ export type EstadoDaPermissao = 'concedida' | 'pendente' | 'negada' | 'indisponi
 const RAIO_DA_TERRA_KM = 6371.0088
 
 /**
- * Distância em linha reta entre dois pontos, pela fórmula de haversine.
+ * Distância em linha reta entre dois pontos, num plano local: as diferenças de latitude e
+ * de longitude viram quilômetros (a longitude encolhida pelo cosseno da latitude média) e a
+ * distância é a hipotenusa.
  *
  * Replica o cálculo do otimizador para que o cliente possa antecipar quantos mercados
  * caem no raio escolhido, sem ida ao servidor. É estimativa de apoio à escolha, nunca
@@ -24,16 +26,12 @@ const RAIO_DA_TERRA_KM = 6371.0088
 export function distanciaKm(de: Origem, para: Origem): number {
   const emRadianos = (graus: number): number => (graus * Math.PI) / 180
 
-  const deltaLatitude = emRadianos(para.latitude - de.latitude)
-  const deltaLongitude = emRadianos(para.longitude - de.longitude)
+  const latitudeMedia = emRadianos((de.latitude + para.latitude) / 2)
+  const norteSul = emRadianos(para.latitude - de.latitude) * RAIO_DA_TERRA_KM
+  const lesteOeste =
+    emRadianos(para.longitude - de.longitude) * Math.cos(latitudeMedia) * RAIO_DA_TERRA_KM
 
-  const termo =
-    Math.sin(deltaLatitude / 2) ** 2 +
-    Math.cos(emRadianos(de.latitude)) *
-      Math.cos(emRadianos(para.latitude)) *
-      Math.sin(deltaLongitude / 2) ** 2
-
-  return 2 * RAIO_DA_TERRA_KM * Math.asin(Math.sqrt(termo))
+  return Math.hypot(norteSul, lesteOeste)
 }
 
 export type MotivoDaFalha = 'negada' | 'indisponivel' | 'tempo' | 'sem-suporte'
@@ -90,7 +88,7 @@ export async function consultarPermissao(): Promise<EstadoDaPermissao> {
 /**
  * Opções deliberadamente frugais: os mercados estão a quilômetros de distância, então a
  * precisão fina do GPS só gastaria bateria, e uma posição de poucos minutos atrás serve
- * perfeitamente para calcular distância até um supermercado.
+ * perfeitamente para calcular distância até um mercado.
  */
 const OPCOES: PositionOptions = {
   enableHighAccuracy: false,

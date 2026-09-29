@@ -125,16 +125,16 @@ echo
 echo "-- Catalogo e listas da semente"
 listas=$(curl -s "$API/listas" -H "Authorization: Bearer $TOKEN")
 qtd_listas=$(echo "$listas" | python3 -c 'import sys,json; print(len(json.load(sys.stdin)))')
-checar_verdadeiro "S04" "usuario demo tem ao menos 2 listas ($qtd_listas)" \
-  "$([ "$qtd_listas" -ge 2 ] && echo 1 || echo 0)"
+checar_verdadeiro "S04" "usuario demo tem ao menos 1 lista ($qtd_listas)" \
+  "$([ "$qtd_listas" -ge 1 ] && echo 1 || echo 0)"
 
 mercados=$(curl -s "$API/mercados" -H "Authorization: Bearer $TOKEN")
 qtd_mercados=$(echo "$mercados" | python3 -c 'import sys,json; print(len(json.load(sys.stdin)))')
-checar "S02a" "6 mercados na semente" "6" "$qtd_mercados"
+checar "S02a" "28 supermercados (um por cidade do CSV DIEESE) no catalogo" "28" "$qtd_mercados"
 
 produtos=$(curl -s "$API/produtos" -H "Authorization: Bearer $TOKEN")
 qtd_produtos=$(echo "$produtos" | python3 -c 'import sys,json; print(len(json.load(sys.stdin)))')
-checar "S02b" "18 produtos na semente" "18" "$qtd_produtos"
+checar "S02b" "13 produtos da cesta DIEESE no catalogo" "13" "$qtd_produtos"
 
 LISTA_ID=$(echo "$listas" | python3 -c '
 import sys, json
@@ -274,7 +274,8 @@ checar "B06" "lista com $contador itens excede o teto e devolve 400" "400" \
 echo
 echo "-- Origem informada e recorte por raio --"
 
-# Centro de Juazeiro do Norte, o mesmo padrao do servidor.
+# Centro de Juazeiro do Norte, o mesmo padrao do servidor. Os supermercados ficam num
+# raio de 6 km do centro: 7 km alcancam todos, 3 km so uma parte.
 ORIGEM='{"latitude":-7.213100,"longitude":-39.315300}'
 
 com_origem=$(curl -s -X POST "$API/listas/$LISTA_ID/recomendacoes" \
@@ -286,9 +287,9 @@ checar "S13" "origem informada deixa de ser aproximada" "false" \
 
 com_raio=$(curl -s -X POST "$API/listas/$LISTA_ID/recomendacoes" \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d "{\"perfil\":\"equilibrado\",\"origem\":$ORIGEM,\"raio_km\":50}")
+  -d "{\"perfil\":\"equilibrado\",\"origem\":$ORIGEM,\"raio_km\":7}")
 
-checar "S14" "raio amplo devolve o recorte usado" "50" \
+checar "S14" "raio amplo devolve o recorte usado" "7" \
   "$(echo "$com_raio" | extrair raio_km)"
 
 mercados_amplo=$(echo "$com_raio" | extrair mercados_considerados)

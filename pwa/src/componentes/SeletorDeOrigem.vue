@@ -157,7 +157,7 @@ function rotuloDoRaio(km: number | null): string {
         distância que não é a sua.
       </p>
       <p v-else-if="mercadosNoRaio !== null" class="mini">
-        {{ mercadosNoRaio }} mercado(s) neste raio, em linha reta — o percurso de rua costuma
+        {{ mercadosNoRaio }} mercado(s) neste raio, em linha reta — o percurso real costuma
         ser maior.
       </p>
       <p v-else class="mini">Todos os mercados cadastrados entram no cálculo.</p>

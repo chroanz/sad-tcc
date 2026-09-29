@@ -102,8 +102,10 @@ sequenceDiagram
 | Só a API Go acessa o Postgres | evita duas fontes de acesso concorrente e mantém o otimizador puro | a API precisa montar um payload completo a cada chamada |
 | Dinheiro em centavos inteiros no fio | CP-SAT é um solver **inteiro**; float em dinheiro produz erro de arredondamento acumulado | conversão explícita nas bordas, documentada no contrato |
 | `precos` append-only | preserva a série histórica exigida pela fundamentação teórica do TCC | leitura passa pela view `precos_vigentes` |
-| Distância por haversine, sem PostGIS | a PoC tem um raio pequeno e poucos mercados; haversine tem erro desprezível nessa escala | não considera malha viária real |
-| Rota decidida **dentro** do solve, via `AddCircuit` | o CP-SAT já resolve, nativamente, a seleção de nós e a ordem ótima de visita num único circuito — não precisa de um TSP resolvido à parte nem do módulo de Routing do OR-Tools | o modelo cresce em $|N|(|N|-1)$ variáveis de arco, irrelevante no teto da PoC (72 arcos para 8 mercados) |
+| Distância em linha reta simples, sem PostGIS nem haversine | a distância não é precificada: serve só ao raio, ao desempate e à exibição do percurso | não considera malha viária real nem a curvatura da Terra |
+| Distância **fora** da função objetivo | decisão do autor: o SAD decide por preço e disponibilidade; a conveniência é o número de mercados | a recomendação não distingue um mercado perto de um longe, exceto no desempate |
+| Ordem de visita pelo vizinho mais próximo, depois do solve | reproduz como as pessoas fazem a feira: um único percurso, sempre para o mercado mais próximo | não é o percurso mais curto possível, e não pretende ser |
+| Preços da base do DIEESE, um supermercado fictício em Juazeiro por cidade da pesquisa | elimina a coleta manual; nenhum preço é inventado e a dispersão entre supermercados é real | os supermercados e suas localizações são fictícios; a dispersão é entre cidades, não entre lojas de uma mesma cidade |
 | Persistir `payload_resultado` como `jsonb` | trilha de auditoria para os testes de acurácia da Fase 4 sem criar tabelas de detalhe | duplicação controlada de dados |
 
 ## Portas, variáveis e execução

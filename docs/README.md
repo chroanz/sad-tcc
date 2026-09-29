@@ -27,11 +27,11 @@ equilibrando custo financeiro e conveniência logística.
 | [`modelo-de-dados.md`](modelo-de-dados.md) | tabelas, dicionário de dados, `precos` append-only |
 | [`contrato-otimizacao.md`](contrato-otimizacao.md) | contrato HTTP entre a API Go e o serviço Python |
 | [`contrato-api-rest.md`](contrato-api-rest.md) | contrato REST entre a API Go e o PWA |
-| [`dados-e-coleta.md`](dados-e-coleta.md) | protocolo de coleta de preços e a base de semente |
+| [`dados-e-coleta.md`](dados-e-coleta.md) | a base da cesta básica do DIEESE e como ela vira catálogo |
 | [`plano-de-sprints.md`](plano-de-sprints.md) | cronograma, DoD e registro de riscos |
 | [`plano-de-testes.md`](plano-de-testes.md) | estratégia de verificação e o que já foi executado |
 | [`avaliacao-heuristica.md`](avaliacao-heuristica.md) | usabilidade do PWA pelas 10 heurísticas de Nielsen, com severidade |
-| [`localizacao-e-custo-de-deslocamento.md`](localizacao-e-custo-de-deslocamento.md) | permissão de geolocalização, raio de busca e em que unidade exibir a logística |
+| [`localizacao-e-custo-de-deslocamento.md`](localizacao-e-custo-de-deslocamento.md) | permissão de geolocalização e raio de busca (histórico: a distância deixou de ser precificada) |
 | [`relatorio-validacao.md`](relatorio-validacao.md) | tabela de convergência CP-SAT × enumeração exaustiva (gerada por comando) |
 | [`como-rodar.md`](como-rodar.md) | execução em Docker e local, verificação e problemas comuns |
 
@@ -52,7 +52,7 @@ flowchart TD
     R["tcc/"] --> A["api/<br/>Go 1.24 + Gin"]
     R --> M["modelo/<br/>Python + FastAPI + OR-Tools"]
     R --> P["pwa/<br/>Vue 3 + Vite + TS"]
-    R --> D["dados/<br/>coleta de preços"]
+    R --> D["dados/<br/>gerador do catálogo DIEESE"]
     R --> S["scripts/<br/>testes de sistema"]
     R --> DOC["docs/<br/>documentação transversal"]
     R --> C["docker-compose.yml"]
@@ -68,7 +68,7 @@ flowchart TD
 
 - Código, comentários e documentação em **português brasileiro**.
 - Dinheiro sempre em **centavos inteiros** entre serviços; formatação só na apresentação.
-- `precos` é **append-only**: cada coleta é um INSERT, e a leitura passa pela view
+- `precos` é **append-only**: cada snapshot é um INSERT, e a leitura passa pela view
   `precos_vigentes`.
 - Diagramas em **Mermaid**, versionáveis em diff e renderizados pelo GitHub e pelo VS Code.
 - Mudanças na função objetivo obrigam a atualizar a seção 5 do `CLAUDE.md`, a
@@ -77,9 +77,10 @@ flowchart TD
 
 ## Aviso sobre os dados
 
-A base carregada por `api/migracoes/002_dados_semente.sql` é **fictícia** e existe apenas
-para o sistema rodar ponta a ponta antes de a coleta de campo terminar. Nenhum preço foi
-observado em loja e nenhum estabelecimento real é representado.
-
-**Nenhum resultado do capítulo de resultados do TCC pode se basear nesses valores.** O
-procedimento de substituição está em [`dados-e-coleta.md`](dados-e-coleta.md).
+Os preços vêm da **Pesquisa Nacional da Cesta Básica do DIEESE** (agosto de 2026), carregada
+pela migration `004_catalogo_dieese.sql`, que remove a base fictícia de
+`002_dados_semente.sql`. O escopo é Juazeiro do Norte/CE: cada nome de cidade da pesquisa
+vira um **supermercado fictício em Juazeiro**, com os preços DIEESE daquela cidade. Os
+preços são reais; **os supermercados, suas localizações e as marcas são fictícios** (marcas
+a ±8% do preço publicado). Detalhes em
+[`dados-e-coleta.md`](dados-e-coleta.md).

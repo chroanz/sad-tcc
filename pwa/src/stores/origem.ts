@@ -130,7 +130,9 @@ export const useOrigemStore = defineStore('origem', (): RetornoOrigemStore => {
     const gravada = lerJson<PreferenciaGravada>(CHAVE_PREFERENCIA)
     if (gravada === null) return
 
-    raioKm.value = gravada.raioKm
+    // Um raio gravado que deixou de ser oferecido recortaria mercados de forma inesperada;
+    // volta ao padrão.
+    raioKm.value = RAIOS_KM.includes(gravada.raioKm) ? gravada.raioKm : RAIO_PADRAO_KM
     mercadoReferenciaId.value = gravada.mercadoReferenciaId
 
     if (gravada.modo === 'dispositivo' && permissao.value === 'concedida') {

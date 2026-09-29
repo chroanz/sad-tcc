@@ -36,6 +36,50 @@ const temEconomiaCalculada = computed<boolean>(
   () => economia.value !== null && economia.value.economia_centavos !== null
 )
 
+/** Abaixo disso a diferença de percurso não é perceptível. */
+const TOLERANCIA_PERCURSO_KM = 0.05
+
+/**
+ * O que se paga no caixa seguindo o roteiro, nos mesmos itens do mercado único. Derivado do
+ * baseline para valer também na comparação parcial, em que os itens são um subconjunto.
+ */
+const pagoNoRoteiro = computed<number | null>(() => {
+  const dados = economia.value
+  if (dados?.custo_mercado_unico_centavos == null || dados.economia_centavos == null) return null
+  return dados.custo_mercado_unico_centavos - dados.economia_centavos
+})
+
+/** O roteiro já é o próprio mercado único: não há divisão da compra a comparar. */
+const compraNumMercadoSo = computed<boolean>(
+  () =>
+    resultado.value?.quantidade_mercados_visitados === 1 &&
+    resultado.value.compras_por_mercado[0]?.mercado_id === economia.value?.mercado_unico_id
+)
+
+/**
+ * A economia é só de preço; a distância não tem preço no modelo. Por isso ela vem ao lado,
+ * em quilômetros, para o usuário julgar se a economia compensa o percurso a mais.
+ */
+const comparacaoDePercurso = computed<string | null>(() => {
+  const baseline = economia.value?.distancia_mercado_unico_km
+  const roteiro = resultado.value?.distancia_total_km
+  const nome = economia.value?.mercado_unico_nome
+  if (baseline == null || roteiro == null || !nome || compraNumMercadoSo.value) return null
+
+  const diferenca = roteiro - baseline
+  const trecho =
+    `O roteiro percorre ${formatarDistancia(roteiro)}; ir e voltar só ao ${nome} ` +
+    `seriam ${formatarDistancia(baseline)}`
+  if (Math.abs(diferenca) < TOLERANCIA_PERCURSO_KM) return `${trecho}: praticamente o mesmo.`
+  if (diferenca < 0) {
+    return `${trecho}. Além de mais barato, o roteiro é ${formatarDistancia(-diferenca)} mais curto.`
+  }
+  return (
+    `${trecho}. Em troca da economia, você anda ${formatarDistancia(diferenca)} a mais — ` +
+    'a distância não entra no preço, então cabe a você decidir se compensa.'
+  )
+})
+
 const ROTULOS_DE_PERFIL: Record<PerfilConveniencia, string> = {
   economico: 'Econômico',
   equilibrado: 'Equilibrado',
@@ -70,14 +114,13 @@ const alternativas = computed<Alternativa[]>(() => {
 })
 
 /**
- * Os parâmetros que produziram o custo logístico. Recomendações gravadas antes de o
- * contrato ecoá-los chegam sem os campos, e aí a linha simplesmente não aparece.
+ * O parâmetro que produziu o custo de conveniência. Recomendações gravadas antes de o
+ * contrato ecoá-lo chegam sem o campo, e aí a linha simplesmente não aparece.
  */
 const parametrosLogisticos = computed<string | null>(() => {
   const porVisita = resultado.value?.custo_por_visita_centavos
-  const porKm = resultado.value?.custo_por_km_centavos
-  if (!porVisita || !porKm) return null
-  return `${formatarReais(porVisita)} por parada e ${formatarReais(porKm)} por quilômetro`
+  if (!porVisita) return null
+  return `${formatarReais(porVisita)} por mercado visitado; a distância não tem custo`
 })
 
 /**
@@ -193,12 +236,12 @@ async function aoAlterarOrigem(): Promise<void> {
       </div>
 
       <!--
-        O sistema não sabe quanto vale um quilômetro para quem vai comprar: o custo por km
-        é parâmetro de servidor, calibrado para carro. Em vez de impor esse valor, mostra
-        o limiar em que a escolha se inverte e devolve o julgamento ao usuário.
+        O sistema não sabe quanto vale uma parada a mais para quem vai comprar. Em vez de
+        impor esse valor, mostra em termos concretos o que muda no caixa e no percurso ao
+        trocar de perfil, e devolve o julgamento ao usuário.
       -->
       <div v-if="alternativas.length > 0" class="cartao">
-        <h2>Por que este perfil?</h2>
+        <h2>E se eu escolher outro perfil?</h2>
         <ul class="alternativas">
           <li v-for="alternativa in alternativas" :key="alternativa.perfil">
             <strong>{{ alternativa.titulo }}</strong>
@@ -231,7 +274,7 @@ async function aoAlterarOrigem(): Promise<void> {
       </div>
 
       <div v-if="economia" class="cartao" :class="temEconomiaCalculada ? 'cartao--marca' : ''">
-        <h2>Economia estimada</h2>
+        <h2>Quanto você economiza</h2>
         <template v-if="temEconomiaCalculada">
           <p class="valor economia-valor">
             {{ formatarReais(economia.economia_centavos ?? 0) }}
@@ -239,10 +282,24 @@ async function aoAlterarOrigem(): Promise<void> {
               ({{ formatarPercentual(economia.economia_percentual ?? 0) }})
             </span>
           </p>
-          <p class="mini">
-            Comparado a comprar tudo em {{ economia.mercado_unico_nome }}, considerando o
-            deslocamento dos dois lados com a mesma régua.
+          <p v-if="compraNumMercadoSo" class="mini">
+            O roteiro já é comprar tudo no {{ economia.mercado_unico_nome }}, o mercado único
+            mais barato para esta lista.
           </p>
+          <template v-else>
+            <p class="mini">
+              No caixa, você paga
+              <strong>{{ formatarReais(pagoNoRoteiro ?? 0) }}</strong> seguindo o roteiro,
+              contra <strong>{{ formatarReais(economia.custo_mercado_unico_centavos ?? 0) }}</strong>
+              comprando tudo no {{ economia.mercado_unico_nome }},
+              {{
+                economia.comparacao_parcial
+                  ? 'o que mais itens atende sozinho.'
+                  : 'o mercado único mais barato.'
+              }}
+            </p>
+            <p v-if="comparacaoDePercurso" class="mini">{{ comparacaoDePercurso }}</p>
+          </template>
           <p v-if="economia.comparacao_parcial" class="aviso aviso--atencao">
             Comparação parcial: nenhum mercado atende sozinho a lista inteira, então só os
             {{ economia.itens_comparados }} itens em comum foram considerados.
@@ -252,7 +309,10 @@ async function aoAlterarOrigem(): Promise<void> {
       </div>
 
       <h2>Seu roteiro</h2>
-      <p class="mini roteiro-nota">Visite os mercados nesta ordem:</p>
+      <p class="mini roteiro-nota">
+        Saia uma vez e visite os mercados nesta ordem — sempre o mais próximo primeiro —,
+        voltando para casa no fim:
+      </p>
 
       <ol class="roteiro">
         <li v-for="parada in resultado.rota" :key="parada.mercado_id" class="parada">
@@ -322,7 +382,7 @@ async function aoAlterarOrigem(): Promise<void> {
         <summary>Detalhes técnicos desta recomendação</summary>
         <dl>
           <div>
-            <dt>Deslocamento estimado</dt>
+            <dt>Custo das paradas</dt>
             <dd>{{ formatarReais(resultado.custo_logistico_centavos) }}</dd>
           </div>
           <div>
@@ -330,7 +390,7 @@ async function aoAlterarOrigem(): Promise<void> {
             <dd>{{ formatarReais(resultado.custo_total_centavos) }}</dd>
           </div>
           <div v-if="parametrosLogisticos">
-            <dt>Parâmetros do deslocamento</dt>
+            <dt>Custo por parada</dt>
             <dd>{{ parametrosLogisticos }}</dd>
           </div>
           <div>
@@ -370,8 +430,8 @@ async function aoAlterarOrigem(): Promise<void> {
           </div>
         </dl>
         <p class="mini nota-tecnica">
-          O deslocamento não é pago no supermercado: é a estimativa que torna comparáveis
-          preço e conveniência dentro do modelo.
+          O custo das paradas não é pago no supermercado: é o valor que torna comparáveis
+          preço e conveniência dentro do modelo. A distância percorrida é só informativa.
         </p>
       </details>
 

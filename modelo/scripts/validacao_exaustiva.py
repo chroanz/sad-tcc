@@ -5,16 +5,13 @@ cada uma por **enumeração exaustiva de todas as atribuições possíveis** e c
 encontrado com o que o CP-SAT devolve.
 
 A enumeração aqui é uma **implementação independente**: ela não importa nada de
-``app.otimizacao.modelo_cpsat`` além da função que está sob teste. O haversine, o custo
-por par item-mercado, o custo logístico (inclusive o circuito mínimo entre os mercados
-visitados) e a função objetivo são reescritos do zero neste arquivo. Se os dois lados
-compartilhassem a aritmética, a comparação não provaria nada.
+``app.otimizacao.modelo_cpsat`` além da função que está sob teste. O custo por par
+item-mercado, o custo de conveniência e a função objetivo são reescritos do zero neste
+arquivo. Se os dois lados compartilhassem a aritmética, a comparação não provaria nada.
 
-O custo logístico de um conjunto de mercados visitados é o de um circuito real —
-``origem → mercados na ordem que minimiza a distância → origem`` —, resolvido aqui por
-força bruta (permutações; o teto de mercados por instância gerada é 4, ``4! = 24``). É a
-mesma restrição de circuito que ``AddCircuit`` resolve dentro do CP-SAT, só que reescrita
-sem nenhum código em comum com ``modelo_cpsat.py``.
+O custo de conveniência de um conjunto de mercados visitados é apenas o custo fixo de cada
+visita: a distância percorrida não é precificada, então não entra no objetivo e não
+precisa ser enumerada aqui.
 
 Método de comparação, em três passos por instância:
 
@@ -44,9 +41,7 @@ from app.esquemas import RequisicaoOtimizacao  # noqa: E402
 from app.otimizacao.modelo_cpsat import resolver_alocacao_de_compras  # noqa: E402
 
 # Reimplementação independente das constantes do contrato.
-RAIO_TERRA_METROS = 6_371_008.8
 ESCALA_DO_PESO = 100
-METROS_EM_UM_KM = 1000
 
 MENSAGEM_CONVERGENCIA_TOTAL = (
     "Convergência total: o CP-SAT encontrou o ótimo global em todas as instâncias."
@@ -55,15 +50,15 @@ MENSAGEM_DIVERGENCIA = (
     "**Divergência detectada.** Ver a coluna Observação nas linhas marcadas com NAO."
 )
 
-# Recorte geográfico real do trabalho: Juazeiro do Norte/CE.
+# Origem no centro de Juazeiro do Norte/CE; supermercados do catálogo, dentro da cidade.
 CENTRO_DE_JUAZEIRO = (-7.2131, -39.3153)
 MERCADOS_DO_RECORTE: List[Tuple[int, str, float, float]] = [
-    (1, "Mercado Central do Juazeiro", -7.214500, -39.316800),
-    (2, "Supermercado Bom Preço Triângulo", -7.204200, -39.320500),
-    (3, "Supermercado Vila Nova Salesianos", -7.220800, -39.304200),
-    (4, "Hipermercado Lagoa Seca", -7.235000, -39.330000),
-    (5, "Atacadão do Limoeiro", -7.247000, -39.346000),
-    (6, "Supermercado Economia Muriti", -7.264000, -39.279000),
+    (1, "Supermercado Brasília", -7.213100, -39.308032),
+    (2, "Supermercado Cuiabá", -7.229162, -39.313879),
+    (3, "Supermercado Rio de Janeiro", -7.225936, -39.294961),
+    (4, "Supermercado Vitória", -7.237883, -39.328274),
+    (5, "Supermercado Palmas", -7.252914, -39.320500),
+    (6, "Supermercado Macaé", -7.163770, -39.336109),
 ]
 
 
@@ -109,89 +104,6 @@ def arredondar_meio_para_cima(valor: float) -> int:
     return int(math.floor(valor + 0.5))
 
 
-def distancia_em_metros(
-    latitude_origem: float,
-    longitude_origem: float,
-    latitude_destino: float,
-    longitude_destino: float,
-) -> int:
-    """Distância de grande círculo entre dois pontos, em metros inteiros.
-
-    Reimplementação independente do haversine, escrita a partir da fórmula e não do
-    código do serviço.
-
-    Args:
-        latitude_origem: latitude do ponto de partida, em graus.
-        longitude_origem: longitude do ponto de partida, em graus.
-        latitude_destino: latitude do ponto de chegada, em graus.
-        longitude_destino: longitude do ponto de chegada, em graus.
-
-    Returns:
-        A distância arredondada para o metro mais próximo.
-    """
-    fi_origem = math.radians(latitude_origem)
-    fi_destino = math.radians(latitude_destino)
-    delta_fi = fi_destino - fi_origem
-    delta_lambda = math.radians(longitude_destino - longitude_origem)
-
-    a = (
-        math.sin(delta_fi / 2.0) ** 2
-        + math.cos(fi_origem) * math.cos(fi_destino) * math.sin(delta_lambda / 2.0) ** 2
-    )
-    c = 2.0 * math.asin(min(1.0, math.sqrt(a)))
-    return arredondar_meio_para_cima(RAIO_TERRA_METROS * c)
-
-
-def custo_logistico_real_centavos(
-    requisicao: RequisicaoOtimizacao, mercados_visitados: Sequence[int]
-) -> int:
-    """Custo, em centavos, de visitar um conjunto de mercados pelo circuito mais curto.
-
-    Reproduz ``custo_por_visita · |visitados| + custo_por_km · distância do circuito
-    mínimo`` a partir da definição do contrato — o mesmo circuito que ``AddCircuit``
-    resolveria dentro do CP-SAT, encontrado aqui por força bruta.
-
-    Args:
-        requisicao: instância a avaliar.
-        mercados_visitados: ``mercado_id`` que entram na rota.
-
-    Returns:
-        O custo logístico do circuito, em centavos.
-    """
-    if not mercados_visitados:
-        return 0
-
-    coordenadas = {mercado.mercado_id: mercado for mercado in requisicao.mercados}
-    pontos = [(requisicao.origem.latitude, requisicao.origem.longitude)] + [
-        (coordenadas[mercado_id].latitude, coordenadas[mercado_id].longitude)
-        for mercado_id in mercados_visitados
-    ]
-    quantidade_nos = len(pontos)
-    matriz = [[0] * quantidade_nos for _ in range(quantidade_nos)]
-    for a in range(quantidade_nos):
-        for b in range(a + 1, quantidade_nos):
-            distancia = distancia_em_metros(*pontos[a], *pontos[b])
-            matriz[a][b] = matriz[b][a] = distancia
-
-    melhor_arcos: Optional[List[Tuple[int, int]]] = None
-    melhor_distancia: Optional[int] = None
-    for permutacao in itertools.permutations(range(1, quantidade_nos)):
-        sequencia = (0, *permutacao, 0)
-        arcos = list(zip(sequencia, sequencia[1:], strict=False))
-        distancia = sum(matriz[a][b] for a, b in arcos)
-        if melhor_distancia is None or distancia < melhor_distancia:
-            melhor_distancia = distancia
-            melhor_arcos = arcos
-
-    custo_km = sum(
-        arredondar_meio_para_cima(
-            requisicao.custo_por_km_centavos * matriz[a][b] / float(METROS_EM_UM_KM)
-        )
-        for a, b in melhor_arcos
-    )
-    return requisicao.custo_por_visita_centavos * len(mercados_visitados) + custo_km
-
-
 def candidatos_elegiveis(requisicao: RequisicaoOtimizacao) -> List[Dict[int, int]]:
     """Pares viáveis de cada item, com o custo total do item naquele mercado.
 
@@ -222,7 +134,6 @@ def avaliar_objetivo(
     elegiveis: Sequence[Dict[int, int]],
     requisicao: RequisicaoOtimizacao,
     peso_escalado: int,
-    memo_logistico: Dict[Tuple[int, ...], int],
 ) -> int:
     """Valor da função objetivo escalarizada para uma alocação completa.
 
@@ -233,11 +144,8 @@ def avaliar_objetivo(
         alocacao: mercado escolhido para cada item, na ordem dos itens; ``None`` para item
             deixado sem atendimento.
         elegiveis: pares viáveis por item, com custo.
-        requisicao: instância avaliada, para o cálculo do circuito mínimo.
+        requisicao: instância avaliada, de onde vem o custo por visita.
         peso_escalado: ``peso_conveniencia`` multiplicado por :data:`ESCALA_DO_PESO`.
-        memo_logistico: cache de ``mercados visitados -> custo logístico``, compartilhada
-            entre chamadas da mesma instância (o circuito mínimo repete muito entre
-            alocações que visitam o mesmo conjunto de mercados).
 
     Returns:
         O objetivo escalado, em centésimos de centavo.
@@ -250,11 +158,8 @@ def avaliar_objetivo(
         custo_dos_itens += elegiveis[indice][mercado_id]
         mercados_visitados.add(mercado_id)
 
-    chave = tuple(sorted(mercados_visitados))
-    if chave not in memo_logistico:
-        memo_logistico[chave] = custo_logistico_real_centavos(requisicao, chave)
-    custo_logistico = memo_logistico[chave]
-    return ESCALA_DO_PESO * custo_dos_itens + peso_escalado * custo_logistico
+    custo_das_visitas = requisicao.custo_por_visita_centavos * len(mercados_visitados)
+    return ESCALA_DO_PESO * custo_dos_itens + peso_escalado * custo_das_visitas
 
 
 def resolver_por_enumeracao(
@@ -273,7 +178,6 @@ def resolver_por_enumeracao(
     """
     elegiveis = candidatos_elegiveis(requisicao)
     peso_escalado = arredondar_meio_para_cima(requisicao.peso_conveniencia * ESCALA_DO_PESO)
-    memo_logistico: Dict[Tuple[int, ...], int] = {}
 
     opcoes_por_item: List[List[Optional[int]]] = []
     for opcoes in elegiveis:
@@ -287,9 +191,7 @@ def resolver_por_enumeracao(
     avaliadas = 0
     for combinacao in itertools.product(*opcoes_por_item):
         avaliadas += 1
-        objetivo = avaliar_objetivo(
-            combinacao, elegiveis, requisicao, peso_escalado, memo_logistico
-        )
+        objetivo = avaliar_objetivo(combinacao, elegiveis, requisicao, peso_escalado)
         if melhor_objetivo is None or objetivo < melhor_objetivo:
             melhor_objetivo = objetivo
             melhor_alocacao = list(combinacao)
@@ -366,7 +268,6 @@ def gerar_instancia(sorteio: random.Random, indice: int) -> RequisicaoOtimizacao
         origem={"latitude": CENTRO_DE_JUAZEIRO[0], "longitude": CENTRO_DE_JUAZEIRO[1]},
         peso_conveniencia=sorteio.choice([0.0, 0.5, 1.0, 3.0]),
         custo_por_visita_centavos=800,
-        custo_por_km_centavos=120,
         mercados=[
             {
                 "mercado_id": mercado_id,
@@ -412,7 +313,7 @@ def validar_instancia(requisicao: RequisicaoOtimizacao, indice: int) -> Resultad
             observacao = "CP-SAT deixou o item %d sem atendimento tendo candidato" % item.item_id
         alocacao.append(mercado_id)
 
-    objetivo_cpsat = avaliar_objetivo(alocacao, elegiveis, requisicao, peso_escalado, {})
+    objetivo_cpsat = avaliar_objetivo(alocacao, elegiveis, requisicao, peso_escalado)
     convergiu = objetivo_cpsat == objetivo_enumeracao and not observacao
     if not convergiu and not observacao:
         observacao = "objetivos diferentes"

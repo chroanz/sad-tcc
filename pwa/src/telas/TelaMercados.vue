@@ -16,8 +16,9 @@ onMounted(() => {
     <div class="cabecalho-tela">
       <h1>Mercados</h1>
       <p>
-        Supermercados considerados nas recomendações. O recorte do trabalho é Juazeiro do
-        Norte/CE, num raio de aproximadamente 7 km do centro.
+        Supermercados considerados nas recomendações, todos em Juazeiro do Norte/CE. São
+        fictícios: cada um pratica os preços da cesta básica do DIEESE da cidade que lhe dá
+        nome.
       </p>
     </div>
 

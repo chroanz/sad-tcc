@@ -151,6 +151,8 @@ export interface EconomiaEstimada {
   mercado_unico_id?: number | null
   mercado_unico_nome: string | null
   custo_mercado_unico_centavos: number | null
+  /** Ida e volta até o mercado único. Ausente em recomendações gravadas antes do campo. */
+  distancia_mercado_unico_km?: number | null
   economia_centavos: number | null
   economia_percentual: number | null
   /** Quantos itens entraram na comparação; ver "Baseline de economia" no contrato. */
@@ -174,11 +176,11 @@ export interface Recomendacao {
   custo_logistico_centavos: number
   custo_total_centavos: number
   /**
-   * Parâmetros que produziram `custo_logistico_centavos`. Ausentes (0) em recomendações
-   * gravadas antes de o contrato passar a ecoá-los.
+   * Parâmetro que produziu `custo_logistico_centavos` (custo fixo por mercado visitado; a
+   * distância não é precificada). Ausente (0) em recomendações gravadas antes de o
+   * contrato passar a ecoá-lo.
    */
   custo_por_visita_centavos?: number
-  custo_por_km_centavos?: number
   quantidade_mercados_visitados: number
   distancia_total_km: number
   rota: ParadaRota[]

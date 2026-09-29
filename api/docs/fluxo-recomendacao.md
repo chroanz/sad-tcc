@@ -32,7 +32,7 @@ sequenceDiagram
     S->>S: valida o teto 20 itens
     S->>R: ListarMercados
     R->>PG: SELECT mercados
-    S->>S: valida o teto 8 mercados
+    S->>S: valida o teto 30 mercados
     S->>S: resolverOrigem (informada ou padrão)
 
     S->>R: BuscarOfertasVigentes(produtoIDs)
@@ -64,7 +64,7 @@ sequenceDiagram
 A lista é carregada com os itens e a posse é conferida. Lista de outro usuário responde
 **403**, não 404 — decisão do contrato REST.
 
-Em seguida vêm os tetos da PoC: mais de **20 itens** ou mais de **8 mercados** cadastrados
+Em seguida vêm os tetos da PoC: mais de **20 itens** ou mais de **30 mercados** cadastrados
 resultam em `400 VALIDACAO` com mensagem descritiva. A instância nunca é processada
 parcialmente.
 

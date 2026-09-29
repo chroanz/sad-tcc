@@ -1,21 +1,25 @@
 """Cálculos geográficos do serviço de otimização.
 
-Todas as distâncias vêm da fórmula de haversine sobre uma esfera de raio médio terrestre.
-Internamente o serviço trabalha com **metros inteiros**: o CP-SAT só aceita coeficientes
-inteiros, e concentrar o único arredondamento aqui mantém o custo logístico exatamente
-reprodutível entre execuções (requisito da Fase 4).
+A distância entre dois pontos é a **linha reta** em um plano local: as diferenças de
+latitude e de longitude viram metros (a longitude encolhida pelo cosseno da latitude
+média) e o resultado é a hipotenusa. É a forma mais simples de distância que ainda fala
+em metros, suficiente para a PoC — a malha viária real não é considerada.
 
-A malha viária real não é considerada — decisão de modelagem registrada em
-``docs/arquitetura.md`` e discutida em ``docs/formulacao-matematica.md``.
+A distância **não entra na função objetivo**: o SAD decide por preço e disponibilidade, e
+precificar o deslocamento está fora do escopo. Ela serve apenas para o recorte por raio,
+para ordenar a visita (ver ``rota.py``) e para informar ao usuário o tamanho do percurso.
+
+Internamente o serviço trabalha com **metros inteiros**, e concentrar o único arredondamento
+aqui mantém os valores exatamente reprodutíveis entre execuções (requisito da Fase 4).
 """
 
 from __future__ import annotations
 
 import math
-from typing import List, NamedTuple, Sequence
+from typing import NamedTuple
 
 RAIO_MEDIO_TERRA_METROS = 6_371_008.8
-"""Raio médio terrestre (IUGG), em metros."""
+"""Raio médio terrestre (IUGG), em metros — converte graus em metros."""
 
 CASAS_DECIMAIS_KM = 3
 """Precisão de apresentação das distâncias em quilômetros (equivale a 1 metro)."""
@@ -33,8 +37,11 @@ class Ponto(NamedTuple):
     longitude: float
 
 
-def distancia_haversine_metros(origem: Ponto, destino: Ponto) -> int:
-    """Distância de grande círculo entre dois pontos, em metros inteiros.
+def distancia_em_linha_reta_metros(origem: Ponto, destino: Ponto) -> int:
+    """Distância em linha reta entre dois pontos, em metros inteiros.
+
+    ``dy = Δlatitude · R`` e ``dx = Δlongitude · cos(latitude média) · R``, com os ângulos
+    em radianos; a distância é ``√(dx² + dy²)``.
 
     Args:
         origem: ponto de partida.
@@ -43,55 +50,14 @@ def distancia_haversine_metros(origem: Ponto, destino: Ponto) -> int:
     Returns:
         A distância arredondada para o metro mais próximo (meio para cima).
     """
-    latitude_origem = math.radians(origem.latitude)
-    latitude_destino = math.radians(destino.latitude)
-    delta_latitude = latitude_destino - latitude_origem
-    delta_longitude = math.radians(destino.longitude - origem.longitude)
-
-    seno_metade_lat = math.sin(delta_latitude / 2.0)
-    seno_metade_lon = math.sin(delta_longitude / 2.0)
-    termo = seno_metade_lat**2 + math.cos(latitude_origem) * math.cos(latitude_destino) * (
-        seno_metade_lon**2
+    latitude_media = math.radians((origem.latitude + destino.latitude) / 2.0)
+    dy = math.radians(destino.latitude - origem.latitude) * RAIO_MEDIO_TERRA_METROS
+    dx = (
+        math.radians(destino.longitude - origem.longitude)
+        * math.cos(latitude_media)
+        * RAIO_MEDIO_TERRA_METROS
     )
-    angulo = 2.0 * math.asin(min(1.0, math.sqrt(termo)))
-    return math.floor(RAIO_MEDIO_TERRA_METROS * angulo + 0.5)
-
-
-def distancia_ida_volta_metros(origem: Ponto, destino: Ponto) -> int:
-    """Distância linearizada de ida e volta entre a origem e um mercado, em metros.
-
-    É o termo ``2 · d(origem, j)`` que entra na função objetivo. Por não depender da ordem
-    de visita, mantém o modelo linear e é uma cota superior da rota real.
-
-    Args:
-        origem: ponto de partida do usuário.
-        destino: localização do mercado.
-
-    Returns:
-        O dobro da distância de haversine, em metros inteiros.
-    """
-    return 2 * distancia_haversine_metros(origem, destino)
-
-
-def matriz_de_distancias_metros(pontos: Sequence[Ponto]) -> List[List[int]]:
-    """Matriz simétrica de distâncias entre todos os pontos informados.
-
-    Usada pela ordenação da rota, onde o índice 0 costuma ser a origem.
-
-    Args:
-        pontos: sequência de pontos na ordem em que serão indexados.
-
-    Returns:
-        Matriz ``n x n`` de distâncias em metros inteiros, com diagonal nula.
-    """
-    quantidade = len(pontos)
-    matriz = [[0] * quantidade for _ in range(quantidade)]
-    for indice_a in range(quantidade):
-        for indice_b in range(indice_a + 1, quantidade):
-            distancia = distancia_haversine_metros(pontos[indice_a], pontos[indice_b])
-            matriz[indice_a][indice_b] = distancia
-            matriz[indice_b][indice_a] = distancia
-    return matriz
+    return math.floor(math.hypot(dx, dy) + 0.5)
 
 
 def metros_para_km(metros: int) -> float:

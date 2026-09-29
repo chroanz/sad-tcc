@@ -30,8 +30,8 @@ def test_comparacao_completa_quando_um_mercado_atende_a_lista_toda():
     assert resposta.economia.custo_mercado_unico_centavos > resposta.custo_total_centavos
 
 
-def test_economia_e_a_diferenca_entre_baseline_e_recomendacao():
-    """Na comparação completa os dois lados cobrem a lista inteira."""
+def test_economia_e_a_diferenca_do_que_se_paga_no_caixa():
+    """Na comparação completa, só os itens entram: o custo das paradas fica de fora."""
     requisicao = montar_requisicao(
         itens=[
             montar_item(1, [(1, 1000), (5, 9000)]),
@@ -43,25 +43,50 @@ def test_economia_e_a_diferenca_entre_baseline_e_recomendacao():
     resposta = resolver_alocacao_de_compras(requisicao)
     economia = resposta.economia
 
+    assert economia.custo_mercado_unico_centavos == 1000 + 9000
     assert (
         economia.economia_centavos
-        == economia.custo_mercado_unico_centavos - resposta.custo_total_centavos
+        == economia.custo_mercado_unico_centavos - resposta.custo_itens_centavos
     )
     assert economia.economia_percentual == round(
         100.0 * economia.economia_centavos / economia.custo_mercado_unico_centavos, 2
     )
 
 
-def test_baseline_inclui_a_parcela_logistica_dos_dois_lados():
-    """Um único mercado também custa uma visita: a régua tem de ser a mesma."""
+def test_mesmo_mercado_dos_dois_lados_nao_tem_economia():
     requisicao = montar_requisicao(
         itens=[montar_item(1, [(1, 5000)])],
         mercados_ids=[1],
     )
     resposta = resolver_alocacao_de_compras(requisicao)
 
-    assert resposta.economia.custo_mercado_unico_centavos == resposta.custo_total_centavos
+    assert resposta.economia.custo_mercado_unico_centavos == resposta.custo_itens_centavos
     assert resposta.economia.economia_centavos == 0
+
+
+def test_economia_nunca_e_negativa_por_causa_do_custo_das_paradas():
+    """Dividir a compra em muitos mercados economiza no caixa, mesmo com várias paradas."""
+    requisicao = montar_requisicao(
+        itens=[
+            montar_item(1, [(1, 1000), (2, 990), (3, 1000)]),
+            montar_item(2, [(1, 1000), (2, 1000), (3, 990)]),
+        ],
+        mercados_ids=[1, 2, 3],
+        peso_conveniencia=0.0,
+    )
+    resposta = resolver_alocacao_de_compras(requisicao)
+
+    assert resposta.quantidade_mercados_visitados == 2
+    assert resposta.economia.economia_centavos == 10
+
+
+def test_baseline_traz_a_ida_e_volta_ate_o_mercado_unico():
+    """O esforço do baseline é ir e voltar a um mercado só, para comparar com o roteiro."""
+    requisicao = montar_requisicao(itens=[montar_item(1, [(1, 5000)])], mercados_ids=[1])
+    resposta = resolver_alocacao_de_compras(requisicao)
+
+    assert resposta.economia.distancia_mercado_unico_km == resposta.distancia_total_km
+    assert resposta.economia.distancia_mercado_unico_km > 0
 
 
 def test_comparacao_parcial_quando_nenhum_mercado_cobre_a_lista_inteira():

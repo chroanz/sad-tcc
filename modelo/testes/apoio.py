@@ -1,8 +1,8 @@
 """Construtores de instâncias para os testes.
 
 Concentra a montagem de payloads aqui para que cada teste declare apenas o que é
-relevante ao cenário que exercita. As coordenadas seguem o recorte real do trabalho:
-Juazeiro do Norte/CE.
+relevante ao cenário que exercita. A origem é o centro de Juazeiro do Norte/CE e os
+mercados são supermercados do catálogo, todos dentro da cidade.
 """
 
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -11,19 +11,20 @@ from app.esquemas import RequisicaoOtimizacao
 
 CENTRO_JUAZEIRO: Dict[str, float] = {"latitude": -7.2131, "longitude": -39.3153}
 
-# Mercados reais do recorte, do mais próximo ao mais distante do centro.
+# Supermercados do catálogo (004_catalogo_dieese.sql), do mais próximo ao mais distante do
+# centro de Juazeiro do Norte.
 COORDENADAS_MERCADOS: Dict[int, Tuple[str, float, float]] = {
-    1: ("Mercado Central do Juazeiro", -7.214500, -39.316800),
-    2: ("Supermercado Bom Preço Triângulo", -7.204200, -39.320500),
-    3: ("Supermercado Vila Nova Salesianos", -7.220800, -39.304200),
-    4: ("Hipermercado Lagoa Seca", -7.235000, -39.330000),
-    5: ("Atacadão do Limoeiro", -7.247000, -39.346000),
-    6: ("Supermercado Economia Muriti", -7.264000, -39.279000),
+    1: ("Supermercado Brasília", -7.213100, -39.308032),
+    2: ("Supermercado Cuiabá", -7.229162, -39.313879),
+    3: ("Supermercado Rio de Janeiro", -7.225936, -39.294961),
+    4: ("Supermercado Vitória", -7.237883, -39.328274),
+    5: ("Supermercado Palmas", -7.252914, -39.320500),
+    6: ("Supermercado Macaé", -7.163770, -39.336109),
 }
 
 
 def montar_mercado(mercado_id: int) -> Dict[str, object]:
-    """Devolve o dicionário de um mercado do recorte de Juazeiro do Norte.
+    """Devolve o dicionário de um mercado de teste.
 
     Args:
         mercado_id: identificador entre 1 e 6.
@@ -84,7 +85,6 @@ def montar_requisicao(
     mercados_ids: Sequence[int],
     peso_conveniencia: float = 1.0,
     custo_por_visita_centavos: int = 800,
-    custo_por_km_centavos: int = 120,
 ) -> RequisicaoOtimizacao:
     """Monta a requisição completa já validada pelo Pydantic.
 
@@ -93,7 +93,6 @@ def montar_requisicao(
         mercados_ids: identificadores dos mercados considerados.
         peso_conveniencia: peso da escalarização.
         custo_por_visita_centavos: custo fixo por mercado visitado.
-        custo_por_km_centavos: custo por quilômetro percorrido.
 
     Returns:
         A requisição pronta para :func:`app.otimizacao.modelo_cpsat.resolver_alocacao_de_compras`.
@@ -102,7 +101,6 @@ def montar_requisicao(
         origem=CENTRO_JUAZEIRO,
         peso_conveniencia=peso_conveniencia,
         custo_por_visita_centavos=custo_por_visita_centavos,
-        custo_por_km_centavos=custo_por_km_centavos,
         mercados=[montar_mercado(identificador) for identificador in mercados_ids],
         itens=itens,
     )

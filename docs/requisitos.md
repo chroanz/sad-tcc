@@ -128,9 +128,9 @@ flowchart LR
 
 | ID | Categoria | Requisito e meta mensurável |
 |---|---|---|
-| **RNF01** | Desempenho | O serviço de otimização deve responder em **menos de 2 s** (p95, medido no servidor, excluindo latência de rede) para o teto da PoC de **20 itens × 8 mercados**. |
+| **RNF01** | Desempenho | O serviço de otimização deve responder em **menos de 2 s** (p95, medido no servidor, excluindo latência de rede) para o teto da PoC de **20 itens × 30 mercados**. |
 | **RNF02** | Desempenho | O endpoint de geração de recomendação da API Go deve responder em **menos de 3 s** ponta a ponta (p95) na mesma instância de teto, incluindo montagem do payload e persistência. |
-| **RNF03** | Capacidade | A PoC deve suportar instâncias de até **20 itens × 8 mercados**, com pelo menos 2 marcas candidatas por item. Instâncias acima do teto devem ser rejeitadas com erro descritivo, não processadas parcialmente. |
+| **RNF03** | Capacidade | A PoC deve suportar instâncias de até **20 itens × 30 mercados** (o catálogo tem 28 supermercados), com pelo menos 2 marcas candidatas por item. Instâncias acima do teto devem ser rejeitadas com erro descritivo, não processadas parcialmente. |
 | **RNF04** | Corretude | O solver deve ser configurado com limite de tempo explícito e reportar o status da solução (`OPTIMAL`, `FEASIBLE`, `INFEASIBLE`); o resultado devolvido deve carregar esse status. |
 | **RNF05** | Corretude | Em instâncias pequenas (até 6 itens × 4 mercados), o custo ótimo do CP-SAT deve coincidir com o obtido por enumeração exaustiva em `modelo/scripts/validacao_exaustiva.py`, com tolerância de R$ 0,01. |
 | **RNF06** | Segurança | Senhas devem ser armazenadas exclusivamente como hash **bcrypt** (custo mínimo 10). Senha em texto claro nunca é persistida nem registrada em log. |
@@ -158,14 +158,16 @@ flowchart LR
 | **RN05** | Se o item da lista tem marca definida, apenas os preços daquela marca são candidatos. Se não tem marca, todas as marcas do produto são candidatas, e o modelo escolhe a mais vantajosa. |
 | **RN06** | O preço considerado é o do snapshot mais recente do par (marca, mercado). Snapshots anteriores permanecem no banco e são usados apenas para consulta histórica. |
 | **RN07** | O custo total dos produtos é a soma de `preco_unitario * quantidade` sobre todos os itens atendidos. |
-| **RN08** | O custo logístico é `custo_por_visita * (nº de mercados visitados)` mais `custo_por_km * (soma das distâncias haversine de ida e volta entre a origem e cada mercado visitado)`. |
+| **RN08** | O custo logístico (de conveniência) é `custo_por_visita * (nº de mercados visitados)`. A distância percorrida **não é precificada** (revisão de escopo de 2026-09-28). |
 | **RN09** | A função objetivo minimizada é `custo_total(x) + peso_conveniencia * custo_logistico(y)`. |
 | **RN10** | Os perfis mapeiam para pesos fixos: `economico` = 0,0; `equilibrado` = 1,0; `conveniente` = 3,0. Um `peso_conveniencia` numérico informado explicitamente prevalece sobre o perfil. |
 | **RN11** | Com `peso_conveniencia` igual a 0,0, o custo logístico não influencia a decisão; a solução minimiza apenas o gasto com produtos. |
-| **RN12** | Se a origem do usuário não for informada, usa-se o ponto de referência do escopo de coleta (centro de Juazeiro do Norte/CE) e a recomendação sinaliza que a distância é aproximada. |
+| **RN12** | Se a origem do usuário não for informada, usa-se o ponto de referência (centro de Juazeiro do Norte/CE) e a recomendação sinaliza que a distância é aproximada. |
 | **RN13** | A economia estimada é a diferença entre o custo do cenário de referência (melhor mercado único capaz de atender o maior número de itens) e o custo dos produtos na solução recomendada, considerando apenas itens atendidos em ambos os cenários. |
 | **RN14** | Recomendações são imutáveis após gravadas. Alterar a lista não altera recomendações anteriores; gera-se uma nova. |
-| **RN15** | Empates entre soluções de mesmo valor objetivo são resolvidos preferindo o menor número de mercados visitados e, persistindo o empate, a menor distância total. |
+| **RN15** | Empates entre soluções de mesmo valor objetivo são resolvidos preferindo o menor número de mercados visitados e, persistindo o empate, os mercados mais próximos da origem. |
+| **RN16** | A ordem de visita é um único percurso: a partir da origem, sempre o mercado ainda não visitado mais próximo de onde o usuário está, voltando à origem no fim. |
+| **RN17** | O escopo é Juazeiro do Norte/CE. Os preços vêm da base da cesta básica do DIEESE: cada nome de cidade vira um supermercado fictício em Juazeiro com os preços daquela cidade; os produtos são os da cesta e cada um tem duas marcas fictícias. Célula sem preço na base = produto indisponível naquele supermercado. |
 
 ---
 
@@ -278,6 +280,10 @@ Critérios de aceite:
 
 ### HU08 — Registrar a coleta semanal de preços
 
+> **Fora do escopo desde a revisão de 2026-09-28.** Os preços vêm da base do DIEESE, e não
+> há coleta. O mecanismo de snapshot append-only (e o endpoint `POST /precos`) continua
+> existindo.
+
 **Como** administrador de dados, **quero** registrar os preços coletados na semana, **para**
 manter a base atualizada e preservar a série histórica.
 
@@ -333,7 +339,7 @@ Critérios de aceite:
 | **CB07** | Origem não informada pelo usuário | Usa-se o ponto de referência do escopo (centro de Juazeiro do Norte/CE) e a resposta sinaliza que a distância é aproximada (RN12). |
 | **CB08** | `peso_conveniencia` igual a 0,0 (perfil `economico`) | A parcela logística não influencia a solução; ainda assim o custo logístico é calculado e exibido informativamente. |
 | **CB09** | Item duplicado na mesma lista (mesmo produto e marca) | Os itens são tratados como linhas independentes do modelo; cada um recebe sua alocação, podendo cair em mercados diferentes. |
-| **CB10** | Instância acima do teto da PoC (mais de 20 itens ou mais de 8 mercados) | Requisição rejeitada com erro descritivo informando o limite da PoC (RNF03). |
+| **CB10** | Instância acima do teto da PoC (mais de 20 itens ou mais de 30 mercados) | Requisição rejeitada com erro descritivo informando o limite da PoC (RNF03). |
 | **CB11** | Serviço de otimização indisponível | A API Go retorna erro de dependência indisponível, com contexto no log; nenhuma recomendação parcial é persistida. |
 | **CB12** | Preços coletados há muito tempo (série desatualizada) | A recomendação é gerada normalmente, mas a resposta informa a data do snapshot mais antigo utilizado. |
 | **CB13** | Dois mercados com coordenadas idênticas | O cálculo de distância retorna 0 km entre eles; cada mercado continua contando como uma visita distinta no custo logístico. |

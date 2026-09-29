@@ -30,7 +30,7 @@ sequenceDiagram
     PG-->>API: precos, estoques, coordenadas
     Note over API: converte reais em centavos<br/>e monta o payload
     API->>OTM: POST /otimizar
-    Note over OTM: constroi o modelo CP-SAT<br/>resolve e ordena a rota
+    Note over OTM: constroi o modelo CP-SAT<br/>resolve e ordena a visita (mais proximo primeiro)
     OTM-->>API: alocacao, rota, custos, economia
     API->>PG: INSERT em recomendacoes (payload_resultado jsonb)
     API-->>PWA: recomendacao formatada
@@ -58,7 +58,6 @@ custo_centavos = round(preco_unitario_centavos * quantidade)
   "origem": { "latitude": -7.213100, "longitude": -39.315300 },
   "peso_conveniencia": 1.0,
   "custo_por_visita_centavos": 800,
-  "custo_por_km_centavos": 120,
   "limite_tempo_segundos": 10.0,
   "mercados": [
     {
@@ -92,10 +91,9 @@ custo_centavos = round(preco_unitario_centavos * quantidade)
 
 | Campo | Tipo | Obrigatório | Descrição |
 |---|---|---|---|
-| `origem.latitude` / `origem.longitude` | float | sim | ponto de partida e retorno do usuário; base do cálculo de distância |
-| `peso_conveniencia` | float ≥ 0 | sim | escalarização do objetivo. `0` ignora a logística; valores maiores concentram a compra |
+| `origem.latitude` / `origem.longitude` | float | sim | ponto de partida e retorno do usuário; base da ordem de visita e do desempate |
+| `peso_conveniencia` | float ≥ 0 | sim | escalarização do objetivo. `0` ignora o custo das paradas; valores maiores concentram a compra |
 | `custo_por_visita_centavos` | int ≥ 0 | não (padrão `800`) | custo fixo atribuído a cada mercado visitado |
-| `custo_por_km_centavos` | int ≥ 0 | não (padrão `120`) | custo atribuído a cada quilômetro percorrido |
 | `limite_tempo_segundos` | float > 0 | não (padrão `10`) | teto de tempo do solver |
 | `mercados[]` | lista | sim | todos os mercados considerados; `mercado_id` único |
 | `itens[]` | lista | sim | itens da lista de compras; pode ser vazia |
@@ -125,7 +123,6 @@ descartado na construção do modelo (restrição de estoque suficiente).
   "valor_objetivo_centavos": 12345,
   "peso_conveniencia": 1.0,
   "custo_por_visita_centavos": 800,
-  "custo_por_km_centavos": 120,
   "quantidade_mercados_visitados": 2,
   "distancia_total_km": 7.42,
   "rota": [
@@ -158,6 +155,7 @@ descartado na construção do modelo (restrição de estoque suficiente).
     "mercado_unico_id": 3,
     "mercado_unico_nome": "Mercado Central",
     "custo_mercado_unico_centavos": 14000,
+    "distancia_mercado_unico_km": 4.8,
     "economia_centavos": 3000,
     "economia_percentual": 21.43,
     "itens_comparados": 8,
@@ -179,12 +177,12 @@ descartado na construção do modelo (restrição de estoque suficiente).
 |---|---|
 | `status` | `OTIMO` (ótimo provado), `VIAVEL` (solução encontrada, limite de tempo atingido) ou `INVIAVEL` |
 | `custo_itens_centavos` | soma dos itens efetivamente alocados |
-| `custo_logistico_centavos` | `custo_por_visita * nº mercados + custo_por_km * distância real do circuito`, **sem** o peso |
-| `custo_por_visita_centavos` / `custo_por_km_centavos` | os parâmetros **efetivamente usados** — os enviados na requisição ou, na ausência deles, os padrões `MODELO_*` do serviço. Ecoá-los é o que torna `custo_logistico_centavos` auditável: sem eles o valor não tem procedência |
+| `custo_logistico_centavos` | `custo_por_visita * nº mercados`, **sem** o peso. A distância não é precificada |
+| `custo_por_visita_centavos` | o parâmetro **efetivamente usado**: o enviado na requisição ou, na ausência dele, o padrão `MODELO_CUSTO_POR_VISITA_CENTAVOS`. Ecoá-lo é o que torna `custo_logistico_centavos` auditável |
 | `custo_total_centavos` | `custo_itens + custo_logistico` — o que o usuário de fato gasta/despende |
 | `valor_objetivo_centavos` | valor da função objetivo, **com** o peso aplicado e sem as penalidades |
-| `distancia_total_km` | distância da rota real sugerida (origem → mercados na ordem → origem) |
-| `rota[]` | mercados visitados na ordem sugerida; vazia se nada foi alocado |
+| `distancia_total_km` | comprimento, em linha reta, do percurso sugerido (origem → mercados na ordem → origem). Informativo: não entra no custo |
+| `rota[]` | mercados visitados na ordem sugerida: a partir da origem, sempre o mais próximo ainda não visitado. Vazia se nada foi alocado |
 | `compras_por_mercado[]` | a recomendação em si: o que comprar em cada mercado |
 | `itens_nao_atendidos[]` | itens sem alocação, com o motivo |
 | `economia` | comparação com o baseline de mercado único (ver abaixo) |
@@ -214,14 +212,11 @@ A regra tem dois níveis, para nunca comparar coisas diferentes:
 Se nem sequer um mercado cobre um único item, todos os campos numéricos vêm `null` com
 `observacao` preenchida — a economia nunca é inventada.
 
-Nos dois casos o custo do baseline inclui a mesma parcela logística (uma visita + ida e
-volta até aquele mercado — exata, pois o baseline é sempre um único mercado, e nesse caso
-ida e volta e circuito coincidem), de modo que os dois lados sejam medidos com a mesma
-régua. Do lado da recomendação, quando a comparação cobre exatamente os mesmos mercados de
-toda a recomendação, a parcela logística é o `custo_logistico_centavos` real da resposta;
-só na comparação parcial (subconjunto de mercados) ela volta a ser aproximada pela soma de
-idas e voltas isoladas, por não existir uma forma exata de repartir o custo de um circuito
-compartilhado entre paradas.
+Nos dois casos a comparação é **só do que se paga no caixa**: a soma dos itens de cada lado.
+O custo das paradas (`custo_por_visita`) fica de fora, porque ninguém o paga no mercado.
+Na comparação completa, o lado da recomendação coincide com `custo_itens_centavos`. O
+esforço aparece à parte: `distancia_mercado_unico_km` é a ida e volta da origem até o
+mercado único, para ser comparada com `distancia_total_km` do roteiro.
 
 ### Desempate determinístico
 
@@ -231,22 +226,19 @@ requisito da validação da Fase 4 — o solve tem **duas fases**:
 
 1. minimiza a função objetivo e guarda o valor ótimo `Z*`;
 2. fixa `objetivo == Z*` como restrição e minimiza, em ordem lexicográfica, o **número de
-   mercados visitados** e depois a **distância real do circuito**.
+   mercados visitados** e depois a **soma das distâncias desses mercados à origem**.
 
 O valor reportado em `valor_objetivo_centavos` é sempre o `Z*` da primeira fase; a segunda
 fase apenas escolhe, entre as soluções ótimas, a mais conveniente.
 
-### A rota é decidida dentro do modelo, não depois
+### A distância não é precificada
 
-Até uma versão anterior deste contrato, a função objetivo usava uma **distância
-linearizada** (`Σ_j visitar[j] · 2 · d(origem, j)`, a ida e volta independente a cada
-mercado) para decidir quais mercados visitar, e só depois do solve uma rota real era
-calculada e exibida em `distancia_total_km` — dois números que podiam divergir, e em
-instâncias com vários mercados chegavam a divergir em mais de 60% (ver
-`modelo/docs/formulacao-matematica.md` §7.1). Isso foi corrigido: o modelo agora resolve a
-seleção **e** a ordem de visita juntas, com uma restrição de circuito nativa do CP-SAT
-(`AddCircuit`). `custo_logistico_centavos` e `distancia_total_km` refletem o mesmo trajeto
-sequencial, sempre — não há mais dois números para o mesmo conceito.
+O SAD decide por **preço e disponibilidade**. Não existe custo por quilômetro: a distância
+só aparece no desempate (acima), na ordem de visita e em `distancia_total_km`, como
+informação. A ordem de visita é montada depois do solve, num **único percurso**. O usuário
+sai da origem uma vez, vai sempre ao mercado ainda não visitado mais próximo de onde está e
+volta para casa no fim. O histórico das versões anteriores (ida e volta linearizada e
+circuito no CP-SAT) está em `modelo/docs/formulacao-matematica.md` §7.
 
 ## Erros
 

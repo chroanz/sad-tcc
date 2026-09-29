@@ -11,8 +11,9 @@ type Coordenada struct {
 }
 
 // Requisicao é o corpo de POST /otimizar. Os campos opcionais do contrato
-// (custo_por_visita_centavos, custo_por_km_centavos e limite_tempo_segundos)
-// são omitidos para que valham os padrões do serviço Python.
+// (custo_por_visita_centavos e limite_tempo_segundos) são omitidos para que
+// valham os padrões do serviço Python. Não há custo por quilômetro: a distância
+// percorrida não é precificada.
 type Requisicao struct {
 	Origem           Coordenada          `json:"origem"`
 	PesoConveniencia float64             `json:"peso_conveniencia"`
@@ -20,8 +21,8 @@ type Requisicao struct {
 	Itens            []ItemRequisicao    `json:"itens"`
 }
 
-// MercadoRequisicao é um mercado candidato, com as coordenadas usadas no
-// cálculo de distância feito pelo solver.
+// MercadoRequisicao é um mercado candidato, com as coordenadas usadas para
+// ordenar a visita (o mais próximo primeiro) e para o desempate do solver.
 type MercadoRequisicao struct {
 	MercadoID int64   `json:"mercado_id"`
 	Nome      string  `json:"nome"`
@@ -57,7 +58,6 @@ type Resposta struct {
 	ValorObjetivoCentavos       int64             `json:"valor_objetivo_centavos"`
 	PesoConveniencia            float64           `json:"peso_conveniencia"`
 	CustoPorVisitaCentavos      int64             `json:"custo_por_visita_centavos"`
-	CustoPorKmCentavos          int64             `json:"custo_por_km_centavos"`
 	QuantidadeMercadosVisitados int               `json:"quantidade_mercados_visitados"`
 	DistanciaTotalKm            float64           `json:"distancia_total_km"`
 	Rota                        []ParadaRota      `json:"rota"`
@@ -71,7 +71,8 @@ type Resposta struct {
 	Bruto json.RawMessage `json:"-"`
 }
 
-// ParadaRota é um mercado na ordem sugerida de visita.
+// ParadaRota é um mercado na ordem sugerida de visita: a partir da origem,
+// sempre o mais próximo ainda não visitado.
 type ParadaRota struct {
 	Ordem                 int     `json:"ordem"`
 	MercadoID             int64   `json:"mercado_id"`

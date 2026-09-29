@@ -11,7 +11,7 @@ estado — o que o torna determinístico e testável isoladamente.
 
 | Documento | Conteúdo |
 |---|---|
-| [`formulacao-matematica.md`](formulacao-matematica.md) | **o modelo**: conjuntos, variáveis, restrições, função objetivo, circuito de rota e desempate |
+| [`formulacao-matematica.md`](formulacao-matematica.md) | **o modelo**: conjuntos, variáveis, restrições, função objetivo, desempate e ordem de visita |
 | [`guia-cpsat.md`](guia-cpsat.md) | como o CP-SAT é usado na prática e por que ele, e não outro solver |
 | [`validacao-e-testes.md`](validacao-e-testes.md) | estratégia de testes e a validação por enumeração exaustiva da Fase 4 |
 | [`../../docs/contrato-otimizacao.md`](../../docs/contrato-otimizacao.md) | o contrato HTTP com a API Go, campo a campo |
@@ -26,8 +26,8 @@ modelo/
 │   ├── esquemas.py                 # modelos Pydantic do contrato
 │   └── otimizacao/
 │       ├── modelo_cpsat.py         # formulação e resolução em duas fases
-│       ├── logistica.py            # haversine e matriz de distâncias
-│       ├── rota.py                 # extrai a ordem de visita do circuito resolvido
+│       ├── logistica.py            # distância em linha reta
+│       ├── rota.py                 # ordem de visita: o mais próximo primeiro
 │       └── economia.py             # baseline de mercado único
 ├── testes/                         # pytest
 ├── scripts/validacao_exaustiva.py  # validação da Fase 4
@@ -39,9 +39,9 @@ modelo/
 ```mermaid
 flowchart LR
     A["POST /otimizar"] --> B["Pydantic valida<br/>o contrato"]
-    B --> C["Teto da PoC<br/>20 itens x 8 mercados"]
+    B --> C["Teto da PoC<br/>20 itens x 30 mercados"]
     C --> D["modelo_cpsat<br/>resolve em 2 fases"]
-    D --> E["rota<br/>extrai as paradas do circuito"]
+    D --> E["rota<br/>ordena as paradas, mais próximo primeiro"]
     D --> F["economia<br/>baseline de mercado único"]
     E --> G["Resposta do contrato"]
     F --> G
@@ -82,9 +82,8 @@ qualquer instância, e serve como portão de qualidade.
 | `MODELO_PORTA` | `8001` | porta do serviço |
 | `MODELO_LIMITE_TEMPO_SEGUNDOS` | `10` | teto de tempo do solver por fase |
 | `MODELO_CUSTO_POR_VISITA_CENTAVOS` | `800` | custo fixo por mercado visitado |
-| `MODELO_CUSTO_POR_KM_CENTAVOS` | `120` | custo por quilômetro percorrido |
 | `MODELO_MAXIMO_ITENS` | `20` | teto de itens da PoC |
-| `MODELO_MAXIMO_MERCADOS` | `8` | teto de mercados da PoC |
+| `MODELO_MAXIMO_MERCADOS` | `30` | teto de mercados da PoC (o catálogo tem 28 supermercados) |
 
 Os padrões logísticos podem ser sobrescritos por requisição — a API Go os envia
 explicitamente.

@@ -1,22 +1,23 @@
-"""Extração da ordem de visita a partir do circuito resolvido pelo CP-SAT.
+"""Ordem de visita dos mercados escolhidos: o mais próximo primeiro.
 
-Até uma versão anterior deste módulo, a ordem de visita era um Caixeiro-Viajante resolvido
-**depois** do solve, sobre o subconjunto de mercados já escolhido (por enumeração exata ou
-heurística). Isso foi abandonado: a escolha de quais mercados visitar dependia de uma
-aproximação (ida e volta independente por mercado) que não conhecia a rota real, e por
-`docs/formulacao-matematica.md` §7 esse descolamento chegava a superestimar o custo
-logístico em mais de 60% em instâncias com vários mercados.
+O modelo CP-SAT decide **quais** mercados visitar (por preço e disponibilidade); este
+módulo decide **em que ordem**. A rota é um único percurso: o usuário sai da origem uma vez,
+vai de mercado em mercado e só volta para a origem no fim — nunca uma ida e volta
+independente por mercado.
 
-Agora o próprio modelo CP-SAT decide *e* ordena a rota na mesma resolução, através da
-restrição de circuito (`CpModel.AddCircuit`, em `modelo_cpsat.py`). Este módulo só percorre
-os arcos ativos da solução, a partir da origem (nó 0), e monta a lista de paradas — não há
-mais busca aqui, só leitura do resultado.
+A ordem segue a regra do **vizinho mais próximo**: a partir do ponto atual (começando pela
+origem), a próxima parada é sempre o mercado ainda não visitado mais próximo. É o critério
+que as pessoas usam na prática ao "fazer a feira", e por isso é o que a recomendação
+reproduz. Não é um Caixeiro-Viajante: como a distância não é precificada, não há por que
+otimizar o percurso — só apresentá-lo numa ordem natural.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Sequence, Tuple
+from typing import List, Sequence, Tuple
+
+from app.otimizacao.logistica import Ponto, distancia_em_linha_reta_metros
 
 
 @dataclass(frozen=True)
@@ -36,46 +37,45 @@ class ParadaOrdenada:
 
 @dataclass(frozen=True)
 class RotaCalculada:
-    """Resultado da extração da rota.
+    """Resultado da ordenação da rota.
 
     Attributes:
-        paradas: mercados na ordem de visita decidida pelo circuito.
-        distancia_total_metros: distância real do circuito origem → paradas → origem.
+        paradas: mercados na ordem de visita.
+        distancia_total_metros: distância do percurso origem → paradas → origem,
+            informativa (não entra no objetivo).
     """
 
     paradas: List[ParadaOrdenada]
     distancia_total_metros: int
 
 
-def extrair_rota(
-    proximo_no: Dict[int, int],
-    matriz_metros: Sequence[Sequence[int]],
-    mercados_por_indice: Dict[int, Tuple[int, str]],
+def ordenar_pelo_mais_proximo(
+    origem: Ponto, mercados: Sequence[Tuple[int, str, Ponto]]
 ) -> RotaCalculada:
-    """Segue os arcos ativos do circuito a partir da origem e monta as paradas em ordem.
+    """Ordena os mercados visitados pela regra do vizinho mais próximo.
 
     Args:
-        proximo_no: para cada índice de nó com arco de saída ativo no circuito resolvido,
-            o índice do próximo nó visitado. O nó ``0`` é a origem; não aparece como chave
-            quando nenhum mercado foi visitado (circuito vazio).
-        matriz_metros: matriz de distâncias em metros, indexada como o circuito (``0`` é a
-            origem, os demais índices seguem ``mercados_por_indice``).
-        mercados_por_indice: índice do nó (``>= 1``) → ``(mercado_id, nome)``.
+        origem: ponto de partida e de retorno do usuário.
+        mercados: ``(mercado_id, nome, ponto)`` de cada mercado a visitar, em qualquer ordem.
 
     Returns:
-        A rota com as paradas na ordem do circuito e a distância total real do trajeto
-        origem → paradas → origem.
+        A rota com as paradas em ordem e a distância total do percurso fechado. Empates de
+        distância são resolvidos pelo menor ``mercado_id``, para que a saída seja
+        determinística.
     """
-    if 0 not in proximo_no:
-        return RotaCalculada(paradas=[], distancia_total_metros=0)
-
+    pendentes = list(mercados)
     paradas: List[ParadaOrdenada] = []
     distancia_total = 0
-    anterior = 0
-    atual = proximo_no[0]
-    while atual != 0:
-        mercado_id, nome = mercados_por_indice[atual]
-        distancia = matriz_metros[anterior][atual]
+    atual = origem
+
+    while pendentes:
+        proximo = min(
+            pendentes,
+            key=lambda mercado: (distancia_em_linha_reta_metros(atual, mercado[2]), mercado[0]),
+        )
+        pendentes.remove(proximo)
+        mercado_id, nome, ponto = proximo
+        distancia = distancia_em_linha_reta_metros(atual, ponto)
         distancia_total += distancia
         paradas.append(
             ParadaOrdenada(
@@ -84,8 +84,9 @@ def extrair_rota(
                 distancia_do_anterior_metros=distancia,
             )
         )
-        anterior = atual
-        atual = proximo_no[atual]
-    distancia_total += matriz_metros[anterior][0]
+        atual = ponto
+
+    if paradas:
+        distancia_total += distancia_em_linha_reta_metros(atual, origem)
 
     return RotaCalculada(paradas=paradas, distancia_total_metros=distancia_total)
